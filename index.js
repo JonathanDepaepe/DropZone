@@ -1,7 +1,9 @@
 const Discord = require('discord.js');
 const client = new Discord.Client();
-const { prefix, token } = require("./settings.json");
+const { token } = require("./auth.json");
+const { prefix } = require("./config.json")
 const ytdl = require("ytdl-core");
+const config = require("./config.json")
 
 
 const queue = new Map();
@@ -29,18 +31,14 @@ client.on("message", async message => {
 
     if (message.content.startsWith(`${prefix}play`)) {
         execute(message, serverQueue);
-        return;
     } else if (message.content.startsWith(`${prefix}skip`)) {
         skip(message, serverQueue);
-        return;
     } else if (message.content.startsWith(`${prefix}stop`)) {
         stop(message, serverQueue);
-        return;
-    } else if (message.content.startsWith(prefix)) {
-        processCommand(message)
-        return;
+    } else if (message.content.startsWith(`${prefix}steamgifts`)) {
+       steamGiftsCommand(message);
     } else {
-        message.channel.send("I don't recognize the command. Try `&help`");
+        processCommand(message)
     }
 });
 
@@ -57,6 +55,7 @@ function processCommand(receivedMessage) {
     if (primaryCommand == "help") {
         helpCommand(arguments, receivedMessage)
     }
+
     else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
@@ -181,6 +180,112 @@ function helpCommand(arguments, receivedMessage) {
 
     receivedMessage.channel.send(botembed)
 }
+function steamGiftsCommand(message) {
+    const giveawayUserIdRequester = message.author.id;
+    let giveawayItem;
+    let itemLink;
+    let pictureLink;
+
+
+    const filterItemName = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            giveawayItem = response.content;
+            return true;
+        }
+        return false;
+    };
+
+    const filterItemLink = (response) => {
+            if (response.author.id === giveawayUserIdRequester && response.content.length > 2 ) {
+                itemLink = response.content;
+                return true;
+            }
+            return false;
+        };
+
+    const filterPictureLink = (response) => {
+                if (response.author.id === giveawayUserIdRequester) {
+                    console.log(response.content)
+                    if (response.content === "no"){
+                        pictureLink =  'https://i.imgur.com/TIDrbVI.png'
+                    }else{
+                        pictureLink = response.content.split(" ")[1];
+                    }
+                    return true;
+                }
+                return false;
+            };
+
+
+
+    message.channel.send(" let's set up your steamGifts giveaway! \nWhat will be the `name of the game?`").then(() => {
+        message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+            .then(collected => {
+                message.channel.send("What will be the `SteamGifts url?`").then(() => {
+                    message.channel.awaitMessages(filterItemLink, {max: 1, time: 120000, errors: ['time']})
+                        .then(collected => {
+                            message.channel.send("You want to add a picture of the game? \n`no` or `yes [URL]`").then(() => {
+                                message.channel.awaitMessages(filterPictureLink, {
+                                    max: 1,
+                                    time: 120000,
+                                    errors: ['time']
+                                })
+                                    .then(collected => {
+                                        message.channel.send("Alright all set!");
+                                        sendToSteamGiftsChannel(message, giveawayItem, itemLink, pictureLink);
+                                    })
+                                    .catch(collected => {
+                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond, <@" + server.serverGiveawaysInformation.makingAlreadyGiveawayUserId + ">! \n\n`Canceled creating the giveaway!`");
+                                    });
+                            });
+                        })
+                        .catch(collected => {
+                            message.channel.send("Uh! You took longer then 2 minutes to respond, <@" + server.serverGiveawaysInformation.makingAlreadyGiveawayUserId + ">! \n\n`Canceled creating the giveaway!`");
+                        });
+                });
+            })
+            .catch(collected => {
+                message.channel.send("Uh! You took longer then 2 minutes to respond, <@" + server.serverGiveawaysInformation.makingAlreadyGiveawayUserId + ">! \n\n`Canceled creating the giveaway!`");
+            });
+    });
+
+
+
+}
+
+function sendToSteamGiftsChannel(message, gameName, steamGiftsURL, pictureURL) {
+
+    const channelToStartGiveaway = message.guild.channels.cache.find(channel =>  channel.id === config.steamGifts);
+
+
+    channelToStartGiveaway.send({"embed": {
+            "title": "***SteamGifts***",
+
+            "description": "New GiveAway hosted by " + message.author.username + " on SteamGifts! \n Lets go all together in the commands and type DISCORD SQUAD!!",
+            "color": 4385012,
+            "footer": {
+                "text": "Added by "+ message.author.username
+            },
+            "thumbnail": {
+                "url": "" + pictureURL
+            },
+            "fields":[
+                {
+                    "name": "Game:",
+                    "value" : "" + gameName,
+                },
+                {
+                    "name": "Url:",
+                    "value" : "" + steamGiftsURL,
+                }]
+        }})
+}
+
+
+
+
+
+
 
 
 client.login(token);

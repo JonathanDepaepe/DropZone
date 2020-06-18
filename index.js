@@ -4,7 +4,7 @@ const { token } = require("./auth.json");
 const { prefix } = require("./config.json")
 const ytdl = require("ytdl-core");
 const config = require("./config.json")
-
+let gameList;
 
 const queue = new Map();
 
@@ -37,6 +37,8 @@ client.on("message", async message => {
         stop(message, serverQueue);
     } else if (message.content.startsWith(`${prefix}steamgifts`)) {
        steamGiftsCommand(message);
+    }else if (message.content.startsWith(`${prefix}voting`)) {
+        voting(message);
     } else {
         processCommand(message)
     }
@@ -54,6 +56,9 @@ function processCommand(receivedMessage) {
 
     if (primaryCommand == "help") {
         helpCommand(arguments, receivedMessage)
+    }
+    else if(primaryCommand == "endvoting") {
+        endVoteCommand(receivedMessage, arguments[0])
     }
 
     else {
@@ -235,17 +240,17 @@ function steamGiftsCommand(message) {
                                         sendToSteamGiftsChannel(message, giveawayItem, itemLink, pictureLink);
                                     })
                                     .catch(collected => {
-                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond, <@" + server.serverGiveawaysInformation.makingAlreadyGiveawayUserId + ">! \n\n`Canceled creating the giveaway!`");
+                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
                                     });
                             });
                         })
                         .catch(collected => {
-                            message.channel.send("Uh! You took longer then 2 minutes to respond, <@" + server.serverGiveawaysInformation.makingAlreadyGiveawayUserId + ">! \n\n`Canceled creating the giveaway!`");
+                            message.channel.send("Uh! You took longer then 2 minutes to respond");
                         });
                 });
             })
             .catch(collected => {
-                message.channel.send("Uh! You took longer then 2 minutes to respond, <@" + server.serverGiveawaysInformation.makingAlreadyGiveawayUserId + ">! \n\n`Canceled creating the giveaway!`");
+                message.channel.send("Uh! You took longer then 2 minutes to respond");
             });
     });
 
@@ -255,10 +260,10 @@ function steamGiftsCommand(message) {
 
 function sendToSteamGiftsChannel(message, gameName, steamGiftsURL, pictureURL) {
 
-    const channelToStartGiveaway = message.guild.channels.cache.find(channel =>  channel.id === config.steamGifts);
+    const steamGiftsChannel = message.guild.channels.cache.find(channel =>  channel.id === config.steamGifts);
 
 
-    channelToStartGiveaway.send({"embed": {
+    steamGiftsChannel.send({"embed": {
             "title": "***SteamGifts***",
 
             "description": "New GiveAway hosted by " + message.author.username + " on SteamGifts! \n Lets go all together in the commands and type DISCORD SQUAD!!",
@@ -281,11 +286,142 @@ function sendToSteamGiftsChannel(message, gameName, steamGiftsURL, pictureURL) {
         }})
 }
 
+function sendVoting(message, gameList){
+
+    const giveawayChannel = message.guild.channels.cache.find(channel =>  channel.id === "477145011029409801");
 
 
 
+        giveawayChannel.send({"embed": {
+            "title": "***Voting***",
+
+            "description": ":heart: ["+gameList[0]+"]"+"("+gameList[1]+")\n" +
+                ":orange_heart: ["+gameList[2]+"]"+"("+gameList[3]+")\n" +
+                ":green_heart: ["+gameList[4]+"]"+"("+gameList[5]+")\n" +
+                ":yellow_heart: ["+gameList[6]+"]"+"("+gameList[7]+")",
+            "color": 4385012,
+            "footer": {
+                "text": "Added by "+ message.author.username
+            }
+        }}).then(sentEmbed => {
+        sentEmbed.react("❤️")
+        sentEmbed.react("🧡")
+        sentEmbed.react("💚")
+        sentEmbed.react("💛")
+    })
+
+}
+
+function voting(message){
+    gameList = [];
+
+    const filterItemName = (response) => {
+        if (response.author.id === config.admin && response.content.length > 2 ) {
+            gameList.push(response.content);
+            return true;
+        }
+        return false;
+    };
+
+    message.channel.send("First game").then(() => {
+        message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+            .then(collected => {
+                message.channel.send("URL:").then(() => {
+                    message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                        .then(collected => {
+                            message.channel.send("second game:").then(() => {
+                                message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                    .then(collected => {
+                                        message.channel.send("URL:").then(() => {
+                                            message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                .then(collected => {
+                                                    message.channel.send("third game").then(() => {
+                                                        message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                            .then(collected => {
+                                                                message.channel.send("URL:").then(() => {
+                                                                    message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                                        .then(collected => {
+                                                                            message.channel.send("Last game:").then(() => {
+                                                                                message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                                                    .then(collected => {
+                                                                                        message.channel.send("URL:").then(() => {
+                                                                                            message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                                                                .then(collected => {
+                                                                                                    message.channel.send("Alright all set!");
+                                                                                                    sendVoting(message, gameList);
+                                                                                                })
+                                                                                                .catch(collected => {
+                                                                                                    message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                                                                                });
+                                                                                        });
+                                                                                    })
+                                                                                    .catch(collected => {
+                                                                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                                                                    });
+                                                                                        });
+                                                                                    })
+                                                                        .catch(collected => {
+                                                                            message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                                                        });
+                                                                                        });
+                                                                                    })
+                                                            .catch(collected => {
+                                                                message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                                            });
+                                                                                        });
+                                                                                    })
+                                                .catch(collected => {
+                                                    message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                                });
+                                                                                        });
+                                                                                    })
+                                    .catch(collected => {
+                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                    });
+                            });
+                        })
+                        .catch(collected => {
+                            message.channel.send("Uh! You took longer then 2 minutes to respond");
+                        });
+                });
+            })
+            .catch(collected => {
+                message.channel.send("Uh! You took longer then 2 minutes to respond");
+            });
+    });
 
 
+}
 
+function endVoteCommand(message, messageID){
+    message.channel.messages.fetch(messageID).then(element=> countVotes(message, element.reactions.cache.toJSON(),messageID))
+}
+function countVotes(message, element, messageID){
+    const hearts = [":heart:",":orange_heart:", ":green_heart:", ":yellow_heart:" ]
+    console.log(element)
+    let highest = [0,0]
+    for (let i = 0; i < element.length; i++) {
+        if (element[i].count > highest[1]){
+            highest[0] = i;
+            highest[1] = element[i].count
+        }
+
+    }
+    message.channel.messages.fetch(messageID)
+        .then(msg => {
+            msg.edit({"embed": {
+                    "title": "***Voting Ended***",
+
+                    "description": ":heart: ["+gameList[0]+"]"+"("+gameList[1]+")\n" +
+                        ":orange_heart: ["+gameList[2]+"]"+"("+gameList[3]+")\n" +
+                        ":green_heart: ["+gameList[4]+"]"+"("+gameList[5]+")\n" +
+                        ":yellow_heart: ["+gameList[6]+"]"+"("+gameList[7]+")\n\n" +
+                        "Won: "+ hearts[highest[0]] + " " + gameList[highest[0]*2],
+                    "color": 4385012,
+                    "footer": {
+                        "text": "Added by "+ message.author.username
+                    }}});
+        });
+}
 
 client.login(token);

@@ -4,15 +4,34 @@ const { token } = require("./auth.json");
 const { prefix } = require("./config.json")
 const ytdl = require("ytdl-core");
 const config = require("./config.json")
-let gameList;
+let gameList = [];
+const mysql = require('mysql')
 
 const queue = new Map();
 
+
+let con = mysql.createConnection({
+    host: "localhost",
+    user: "root",
+    password: "",
+    port: "3306",
+    database: "discord",
+    connectionLimit: 10
+})
+
+
+    con.connect(function(err) {
+        if (err) throw err;
+        console.log("Database connected!");
+    });
+
+
 client.once("ready", () => {
-    console.log('Ready!');
+    console.log('Bot ready!');
     client.user.setActivity('Keylegends.com | &help', { type: 'PLAYING' })
         .then(presence => console.log(`Activity set to ${presence.activities[0].name}`))
         .catch(console.error);
+
 });
 
 client.once("reconnecting", () => {
@@ -37,12 +56,12 @@ client.on("message", async message => {
         stop(message, serverQueue);
     } else if (message.content.startsWith(`${prefix}steamgifts`)) {
        steamGiftsCommand(message);
-    }else if (message.content.startsWith(`${prefix}voting`)) {
-        voting(message);
     } else {
         processCommand(message)
     }
 });
+
+
 
 
 function processCommand(receivedMessage) {
@@ -57,8 +76,14 @@ function processCommand(receivedMessage) {
     if (primaryCommand == "help") {
         helpCommand(arguments, receivedMessage)
     }
+    if (primaryCommand == "voting") {
+        voting(receivedMessage, arguments[0])
+    }
     else if(primaryCommand == "endvoting") {
-        endVoteCommand(receivedMessage, arguments[0])
+        endVoteCommand(receivedMessage, arguments)
+    }
+    else if(primaryCommand == "giveaway") {
+        giveAway(receivedMessage)
     }
 
     else {
@@ -286,13 +311,13 @@ function sendToSteamGiftsChannel(message, gameName, steamGiftsURL, pictureURL) {
         }})
 }
 
-function sendVoting(message, gameList){
+function sendVoting(message, gameList, messageID){
 
-    const giveawayChannel = message.guild.channels.cache.find(channel =>  channel.id === "477145011029409801");
+    const giveawayChannel = message.guild.channels.cache.find(channel =>  channel.id === messageID);
 
 
 
-        giveawayChannel.send({"embed": {
+        giveawayChannel.send("@everyone\n", {"embed": {
             "title": "***Voting***",
 
             "description": ":heart: ["+gameList[0]+"]"+"("+gameList[1]+")\n" +
@@ -301,7 +326,7 @@ function sendVoting(message, gameList){
                 ":yellow_heart: ["+gameList[6]+"]"+"("+gameList[7]+")",
             "color": 4385012,
             "footer": {
-                "text": "Added by "+ message.author.username
+                "text": "Voting added by "+ message.author.username
             }
         }}).then(sentEmbed => {
         sentEmbed.react("❤️")
@@ -312,7 +337,7 @@ function sendVoting(message, gameList){
 
 }
 
-function voting(message){
+function voting(message, messageID){
     gameList = [];
 
     const filterItemName = (response) => {
@@ -348,7 +373,7 @@ function voting(message){
                                                                                             message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
                                                                                                 .then(collected => {
                                                                                                     message.channel.send("Alright all set!");
-                                                                                                    sendVoting(message, gameList);
+                                                                                                    sendVoting(message, gameList, messageID);
                                                                                                 })
                                                                                                 .catch(collected => {
                                                                                                     message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
@@ -394,9 +419,16 @@ function voting(message){
 }
 
 function endVoteCommand(message, messageID){
-    message.channel.messages.fetch(messageID).then(element=> countVotes(message, element.reactions.cache.toJSON(),messageID))
+    console.log("endvoting")
+
+    console.log(messageID[0])
+    console.log(messageID[1])
+    const channelMessage = message.guild.channels.cache.find(channel =>  channel.id === messageID[0])
+    console.log(channelMessage)
+
+    channelMessage.messages.fetch(messageID[1]).then(element=> countVotes(channelMessage, element.reactions.cache.toJSON(),messageID[1], message))
 }
-function countVotes(message, element, messageID){
+function countVotes(message, element, messageID, messageOwner){
     const hearts = [":heart:",":orange_heart:", ":green_heart:", ":yellow_heart:" ]
     console.log(element)
     let highest = [0,0]
@@ -407,7 +439,7 @@ function countVotes(message, element, messageID){
         }
 
     }
-    message.channel.messages.fetch(messageID)
+    message.messages.fetch(messageID)
         .then(msg => {
             msg.edit({"embed": {
                     "title": "***Voting Ended***",
@@ -419,9 +451,227 @@ function countVotes(message, element, messageID){
                         "Won: "+ hearts[highest[0]] + " " + gameList[highest[0]*2],
                     "color": 4385012,
                     "footer": {
-                        "text": "Added by "+ message.author.username
+                        "text": "Added by "+ messageOwner.author.username
                     }}});
         });
+
+    messageOwner.channel.send("Alright all set!")
 }
+
+function giveAway(message){
+    const giveawayUserIdRequester = message.author.id
+    let channelId;
+    let totalTime= [];
+    let totalWinners;
+    let giveawayName;
+
+
+    const filterSetChannel = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("channel: " + response.content.slice(2,20))
+            channelId = response.content.slice(2,20);
+            return true;
+        }
+        return false;
+    };
+    const filterSetTime = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("time: " + response.content.slice(0,-1) +" "+ response.content.slice(-1))
+            totalTime.push(response.content.slice(0,-1))
+            totalTime.push(response.content.slice(-1))
+            return true;
+        }
+        return false;
+    };
+
+    const filterSetWinners = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("winners: " + response.content)
+            totalWinners = response.content;
+            return true;
+        }
+        return false;
+    };
+    const filterSetName = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("name giveaway: " + response.content)
+            giveawayName = response.content;
+            return true;
+        }
+        return false;
+    };
+
+
+
+
+
+    message.channel.send(" let's set up an giveaway! \n`Please type the name of a channel in this server.`").then(() => {
+        message.channel.awaitMessages(filterSetChannel, {max: 1, time: 120000, errors: ['time']})
+            .then(collected => {
+                message.channel.send("What will be the `The total time of the giveaway`\nEnter a duration in `S,M,H,D`").then(() => {
+                    message.channel.awaitMessages(filterSetTime, {max: 1, time: 120000, errors: ['time']})
+                        .then(collected => {
+                            message.channel.send("`Please enter a number of winners between 1 and 10.`").then(() => {
+                                message.channel.awaitMessages(filterSetWinners, {max: 1, time: 120000, errors: ['time']})
+                                    .then(collected => {
+                                        message.channel.send("Finally,`What do you want to giveaway` ?").then(() => {
+                                            message.channel.awaitMessages(filterSetName, {max: 1, time: 120000, errors: ['time']})
+
+                                                .then(collected => {
+                                                    message.channel.send("Alright all set!");
+                                                    startGiveaway(message, channelId, totalTime, totalWinners, giveawayName);
+                                                })
+                                                .catch(collected => {
+                                                    message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                                });
+                                        });
+                                    })
+                                    .catch(collected => {
+                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                    });
+                            });
+                        })
+                        .catch(collected => {
+                            message.channel.send("Uh! You took longer then 2 minutes to respond");
+                        });
+                });
+            })
+            .catch(collected => {
+                message.channel.send("Uh! You took longer then 2 minutes to respond");
+            });
+    });
+
+
+
+}
+
+function startGiveaway(message, channelId, totalTime, totalWinners, giveawayName){
+    let deadline;
+    if(totalTime[1].toLowerCase() === "d"){
+        deadline = new Date(Date.now() + totalTime[0]* 24*3600*1000)
+    }else if (totalTime[1].toLowerCase() === "h"){
+        deadline = new Date(Date.now() + totalTime[0]* 3600*1000)
+
+    }else if (totalTime[1].toLowerCase() === "m") {
+        deadline = new Date(Date.now() + totalTime[0]* 60*1000)
+
+    }else if (totalTime[1].toLowerCase() === "s"){
+        deadline = new Date(Date.now() + totalTime[0]* 1000)
+    }
+    sendGiveaway(message, channelId, deadline, giveawayName, totalWinners);
+
+}
+
+function addToDatabase(message, message_id, channelId, deadline, giveawayName, totalWinners) { //will be used later
+    let sql = "INSERT INTO giveaways (channel, winners, name, time, message_id) VALUES ('" + channelId + "', '" + totalWinners + "', '" + giveawayName +  "', '" + deadline.getTime() + "', '" + message_id +  "')";
+    con.query(sql, function (err, result) {
+        if (err) throw err;
+        console.log(result)
+        console.log("1 record inserted");
+    });
+    updateGiveaway(message, deadline, message_id, channelId, giveawayName, totalWinners)
+
+
+}
+
+function sendGiveaway(message, channelId, deadline, name, totalWinners){
+    const channelMessage = message.guild.channels.cache.find(channel =>  channel.id === channelId)
+
+    let now = new Date().getTime();
+    let t = deadline - now;
+    let days = Math.floor(t / (1000 * 60 * 60 * 24));
+    let hours = Math.floor((t%(1000 * 60 * 60 * 24))/(1000 * 60 * 60));
+    let minutes = Math.floor((t % (1000 * 60 * 60)) / (1000 * 60));
+    let seconds = Math.floor((t % (1000 * 60)) / 1000);
+
+
+    channelMessage.send({"embed": {
+            "title": "" + name,
+            "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days "+ hours + " hours " + minutes + " minutes "  + seconds + " seconds",
+            "color": 4385012,
+            "footer": {
+                "text": "Created by " + message.author.username
+            }}}).then(sentEmbed => {
+                addToDatabase(message, sentEmbed.id, channelId, deadline, name, totalWinners);
+        sentEmbed.react("723120954468990996")})
+
+}
+
+
+function getReactions(message, channelMessage, message_id, name, totalWinners){
+    channelMessage.messages.fetch(message_id).then(element=> endGiveaway(message, channelMessage, message_id, name, totalWinners, element.reactions.cache.toJSON()))
+
+}
+
+
+function updateGiveaway(message, deadline, message_id, channel_id, name, totalWinners){
+    const giveawayChannel = message.guild.channels.cache.find(channel =>  channel.id === channel_id)
+
+    let x = setInterval(function() {
+        let now = new Date().getTime();
+        let t = deadline - now;
+        let days = Math.floor(t / (1000 * 60 * 60 * 24));
+        let hours = Math.floor((t%(1000 * 60 * 60 * 24))/(1000 * 60 * 60));
+        let minutes = Math.floor((t % (1000 * 60 * 60)) / (1000 * 60));
+        let seconds = Math.floor((t % (1000 * 60)) / 1000);
+
+        giveawayChannel.messages.fetch(message_id)
+            .then(msg => {
+                msg.edit({"embed": {
+                "title": "" + name,
+                "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days "+ hours + " hours " + minutes + " minutes "  + seconds + " seconds",
+                "color": 4385012,
+                "footer": {
+                    "text": "Created by " + message.author.username
+                }}})})
+        if (t < 0) {
+            clearInterval(x);
+            getReactions(message, giveawayChannel, message_id, name, totalWinners)
+        }
+
+    }, 5000);
+
+}
+
+function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, element){
+    let winner;
+    console.log(element)
+    for (let i = 0; i < element.length; i++) {
+        console.log(element[i])
+        console.log(element[i].users)
+        console.log(element[i].emojiID.toString())
+
+
+        if (element[i].emojiID.toString() === "723120954468990996"){
+            console.log("was here")
+            let randomNumber = Math.floor(Math.random() * (element[i].count - 2 + 1)) + 1;
+            console.log(randomNumber)
+            winner = element[i].users[randomNumber]
+        }
+
+        message.channel.send("<@" +winner+">")
+        }
+
+
+
+    giveawayChannel.messages.fetch(message_id)
+        .then(msg => {
+            msg.edit({"embed": {
+                    "title": "" + name,
+                    "description": "React with <:DropZone:723120954468990996> to enter!\n ENDED",
+                    "color": 4385012,
+                    "footer": {
+                        "text": "Created by " +message.author.username
+                    }}})})
+
+    giveawayChannel.send("congrats "+ "<@" +winner+">"+ ", You won : " + name)
+
+}
+
+
+
+
+
+
 
 client.login(token);

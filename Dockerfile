@@ -10,5 +10,5 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-
+CMD ["./wait-for-it.sh", "localhost:3306"]
 CMD [ "node", "index.js" ]

@@ -86,6 +86,8 @@ function processCommand(receivedMessage) {
         checkCommand(receivedMessage)
     } else if (primaryCommand == "rank") {
         rankCommand(receivedMessage)
+    } else if (primaryCommand == "claim") {
+        claimCommand(receivedMessage)
     } else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
@@ -816,21 +818,23 @@ function addLevels(user) {
     let lastMessage = new Date(user[4])
     let now = new Date().getTime();
     let t = lastMessage - now;
+    let randomXP;
+    let newTotalXp = user[3];
+    let totalMessages = (parseInt(user[2]) + 1).toString()
+    let level = user[1]
+    let date = user[4]
     if (t < -60000) {
-        let randomXP = Math.floor(Math.random() * Math.floor(config.maxXP)) + 1;
-        let newTotalXp = (parseInt(user[3]) + randomXP).toString()
-        let level = user[1]
-        let totalMessages = (parseInt(user[2]) + 1).toString()
+        randomXP = Math.floor(Math.random() * Math.floor(config.maxXP)) + 1;
+        newTotalXp = (parseInt(user[3]) + randomXP).toString()
         if (newTotalXp > calculatingLevel(parseInt(user[1]) + 1)) {
             level = (parseInt(level) + 1).toString()
         }
-        let date = new Date()
-
-        con.query("UPDATE levels SET level = " + level + ", totalMessages = " + totalMessages + ", totalXp = " + newTotalXp + ", lastMessage = '" + date + "'  WHERE user_id = " + user[0], function (err, result) {
-            if (err) throw err;
-
-        });
+        date = new Date()
     }
+    con.query("UPDATE levels SET level = " + level + ", totalMessages = " + totalMessages + ", totalXp = " + newTotalXp + ", lastMessage = '" + date + "'  WHERE user_id = " + user[0], function (err, result) {
+        if (err) throw err;
+
+    });
 }
 
 function calculatingLevel(x) {
@@ -848,7 +852,7 @@ function addNewLevelUser(userId) {
 
 }
 
-function rankCommand(message){
+function rankCommand(message) {
     let user = [];
     let name;
     let userExists = false;
@@ -859,7 +863,7 @@ function rankCommand(message){
             if (message.author.id === enteredUsers.user_id) {
                 userExists = true;
                 name = message.author.username
-                let xpToGo = Math.round( calculatingLevel(parseInt(enteredUsers.level) + 1))
+                let xpToGo = Math.round(calculatingLevel(parseInt(enteredUsers.level) + 1))
                 message.channel.send({
                     "embed": {
                         "title": "" + name,
@@ -872,12 +876,62 @@ function rankCommand(message){
                 })
             }
         }
-        if (!userExists){
+        if (!userExists) {
             message.channel.send("<:DropZone:723120954468990996> You aren't ranked yet. Send some messages first, then try again.")
         }
 
     })
 
+}
+
+
+function claimCommand(message) {
+    let steamKey = ""
+    let userId = message.author.id
+    let date = new Date();
+    con.query("SELECT * FROM levels WHERE user_id = " + userId, function (err, result) {
+        if (err) throw console.error(err);
+        if (config.claimLevels[result[0].claimed] <= result[0].level) {
+            con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
+                if (err) throw console.error(err);
+                if (result1.length >= 3) {
+
+                    let newClaimedNumber = result[0].claimed + 1;
+                    con.query("UPDATE levels SET claimed = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
+                        if (err) throw err;
+
+                    });
+
+                    for (let i = 0; i < 3; i++) {
+                        steamKey += "\n" + result1[i].gameName + " | " + result1[i].gameKey
+                        con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[i].id, function (err, result) {
+                            if (err) throw err;
+
+                        });
+                    }
+
+
+                    message.author.send({
+                        "embed": {
+                            "title": "Level Reward",
+                            "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your keys:** ```" + steamKey + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
+                            "color": 254714,
+                            "timestamp": "" + date,
+                            "footer": {
+                                "icon_url": "https://i.imgur.com/A4OSs19.jpg",
+                                "text": "SilentZ420"
+                            },
+                            "thumbnail": {
+                                "url": "https://i.imgur.com/TIDrbVI.png"
+                            }
+                        }
+                    })
+                } else {
+                    message.author.send("It looks like we are out of stuck. Please contact ```@Silentz420#9436```")
+                }
+            })
+        }
+    })
 }
 
 client.login(token);

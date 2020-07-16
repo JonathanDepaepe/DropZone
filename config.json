@@ -4,5 +4,6 @@
   "giveAway": "466692261602656257",
   "admin": "181799020207800323",
   "adminRole": "CREATORS",
-  "maxXP": 3
+  "maxXP": 3,
+  "claimLevels": [5,10,15,20,25,30,35]
 }

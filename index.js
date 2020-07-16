@@ -1,7 +1,7 @@
 const Discord = require('discord.js');
 const client = new Discord.Client();
-const { token } = require("./auth.json");
-const { prefix } = require("./config.json")
+const {token} = require("./auth.json");
+const {prefix} = require("./config.json")
 const ytdl = require("ytdl-core");
 const config = require("./config.json")
 let gameList = [];
@@ -20,15 +20,15 @@ let con = mysql.createConnection({
 })
 
 
-    con.connect(function(err) {
-        if (err) throw err;
-        console.log("Database connected!");
-    });
+con.connect(function (err) {
+    if (err) throw err;
+    console.log("Database connected!");
+});
 
 
 client.once("ready", () => {
     console.log('Bot ready!');
-    client.user.setActivity('Keylegends.com | &help', { type: 'PLAYING' })
+    client.user.setActivity('Keylegends.com | &help', {type: 'PLAYING'})
         .then(presence => console.log(`Activity set to ${presence.activities[0].name}`))
         .catch(console.error);
 
@@ -44,6 +44,8 @@ client.once("disconnect", () => {
 
 client.on("message", async message => {
     if (message.author.bot) return;
+    if (message.guild === null) return;
+    levelMessage(message);
     if (!message.content.startsWith(prefix)) return;
 
     const serverQueue = queue.get(message.guild.id);
@@ -55,13 +57,11 @@ client.on("message", async message => {
     } else if (message.content.startsWith(`${prefix}stop`)) {
         stop(message, serverQueue);
     } else if (message.content.startsWith(`${prefix}steamgifts`)) {
-       steamGiftsCommand(message);
+        steamGiftsCommand(message);
     } else {
         processCommand(message)
     }
 });
-
-
 
 
 function processCommand(receivedMessage) {
@@ -78,15 +78,15 @@ function processCommand(receivedMessage) {
     }
     if (primaryCommand == "voting") {
         voting(receivedMessage, arguments[0])
-    }
-    else if(primaryCommand == "endvoting") {
+    } else if (primaryCommand == "endvoting") {
         endVoteCommand(receivedMessage, arguments)
-    }
-    else if(primaryCommand == "giveaway") {
+    } else if (primaryCommand == "giveaway") {
         giveAway(receivedMessage)
-    }
-
-    else {
+    } else if (primaryCommand == "check") {
+        checkCommand(receivedMessage)
+    } else if (primaryCommand == "rank") {
+        rankCommand(receivedMessage)
+    } else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
 }
@@ -184,20 +184,22 @@ function play(guild, song) {
         })
         .on("error", error => console.error(error));
     dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
-    serverQueue.textChannel.send({"embed": {
+    serverQueue.textChannel.send({
+        "embed": {
             "title": "**Now Playing**",
-            "description": "["+song.title+"]"+"("+song.url+")",
+            "description": "[" + song.title + "]" + "(" + song.url + ")",
             "color": 4385012,
             "footer": {
-                "text": "Requested by "+ song.requested
+                "text": "Requested by " + song.requested
             },
             "thumbnail": {
-                "url": "https://img.youtube.com/vi/"+song.thumbnail+"/maxresdefault.jpg"
+                "url": "https://img.youtube.com/vi/" + song.thumbnail + "/maxresdefault.jpg"
             }
         }
     });
 
 }
+
 function helpCommand(arguments, receivedMessage) {
     receivedMessage.delete()
     let botembed = new Discord.MessageEmbed()
@@ -205,11 +207,12 @@ function helpCommand(arguments, receivedMessage) {
         .setDescription("Commands")
         .setColor("#42e8f4")
         .addField("Music", "&play, &skip, &stop")
-        .setFooter("requested by "+ receivedMessage.author.username)
+        .setFooter("requested by " + receivedMessage.author.username)
         .setTimestamp();
 
     receivedMessage.channel.send(botembed)
 }
+
 function steamGiftsCommand(message) {
     const giveawayUserIdRequester = message.author.id;
     let giveawayItem;
@@ -226,26 +229,25 @@ function steamGiftsCommand(message) {
     };
 
     const filterItemLink = (response) => {
-            if (response.author.id === giveawayUserIdRequester && response.content.length > 2 ) {
-                itemLink = response.content;
-                return true;
-            }
-            return false;
-        };
+        if (response.author.id === giveawayUserIdRequester && response.content.length > 2) {
+            itemLink = response.content;
+            return true;
+        }
+        return false;
+    };
 
     const filterPictureLink = (response) => {
-                if (response.author.id === giveawayUserIdRequester) {
-                    console.log(response.content)
-                    if (response.content === "no"){
-                        pictureLink =  'https://i.imgur.com/TIDrbVI.png'
-                    }else{
-                        pictureLink = response.content.split(" ")[1];
-                    }
-                    return true;
-                }
-                return false;
-            };
-
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log(response.content)
+            if (response.content === "no") {
+                pictureLink = 'https://i.imgur.com/TIDrbVI.png'
+            } else {
+                pictureLink = response.content.split(" ")[1];
+            }
+            return true;
+        }
+        return false;
+    };
 
 
     message.channel.send(" let's set up your steamGifts giveaway! \nWhat will be the `name of the game?`").then(() => {
@@ -280,55 +282,57 @@ function steamGiftsCommand(message) {
     });
 
 
-
 }
 
 function sendToSteamGiftsChannel(message, gameName, steamGiftsURL, pictureURL) {
 
-    const steamGiftsChannel = message.guild.channels.cache.find(channel =>  channel.id === config.steamGifts);
+    const steamGiftsChannel = message.guild.channels.cache.find(channel => channel.id === config.steamGifts);
 
 
-    steamGiftsChannel.send({"embed": {
+    steamGiftsChannel.send({
+        "embed": {
             "title": "***SteamGifts***",
 
             "description": "New GiveAway hosted by " + message.author.username + " on SteamGifts! \n Lets go all together in the commands and type DISCORD SQUAD!!",
             "color": 4385012,
             "footer": {
-                "text": "Added by "+ message.author.username
+                "text": "Added by " + message.author.username
             },
             "thumbnail": {
                 "url": "" + pictureURL
             },
-            "fields":[
+            "fields": [
                 {
                     "name": "Game:",
-                    "value" : "" + gameName,
+                    "value": "" + gameName,
                 },
                 {
                     "name": "Url:",
-                    "value" : "" + steamGiftsURL,
+                    "value": "" + steamGiftsURL,
                 }]
-        }})
+        }
+    })
 }
 
-function sendVoting(message, gameList, messageID){
+function sendVoting(message, gameList, messageID) {
 
-    const giveawayChannel = message.guild.channels.cache.find(channel =>  channel.id === messageID);
+    const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === messageID);
 
 
-
-        giveawayChannel.send("@everyone\n", {"embed": {
+    giveawayChannel.send("@everyone\n", {
+        "embed": {
             "title": "***Voting***",
 
-            "description": ":heart: ["+gameList[0]+"]"+"("+gameList[1]+")\n" +
-                ":orange_heart: ["+gameList[2]+"]"+"("+gameList[3]+")\n" +
-                ":green_heart: ["+gameList[4]+"]"+"("+gameList[5]+")\n" +
-                ":yellow_heart: ["+gameList[6]+"]"+"("+gameList[7]+")",
+            "description": ":heart: [" + gameList[0] + "]" + "(" + gameList[1] + ")\n" +
+                ":orange_heart: [" + gameList[2] + "]" + "(" + gameList[3] + ")\n" +
+                ":green_heart: [" + gameList[4] + "]" + "(" + gameList[5] + ")\n" +
+                ":yellow_heart: [" + gameList[6] + "]" + "(" + gameList[7] + ")",
             "color": 4385012,
             "footer": {
-                "text": "Voting added by "+ message.author.username
+                "text": "Voting added by " + message.author.username
             }
-        }}).then(sentEmbed => {
+        }
+    }).then(sentEmbed => {
         sentEmbed.react("❤️")
         sentEmbed.react("🧡")
         sentEmbed.react("💚")
@@ -337,11 +341,11 @@ function sendVoting(message, gameList, messageID){
 
 }
 
-function voting(message, messageID){
+function voting(message, messageID) {
     gameList = [];
 
     const filterItemName = (response) => {
-        if (response.author.id === config.admin && response.content.length > 2 ) {
+        if (response.author.id === config.admin && response.content.length > 2) {
             gameList.push(response.content);
             return true;
         }
@@ -358,19 +362,39 @@ function voting(message, messageID){
                                 message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
                                     .then(collected => {
                                         message.channel.send("URL:").then(() => {
-                                            message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                            message.channel.awaitMessages(filterItemName, {
+                                                max: 1,
+                                                time: 120000,
+                                                errors: ['time']
+                                            })
                                                 .then(collected => {
                                                     message.channel.send("third game").then(() => {
-                                                        message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                        message.channel.awaitMessages(filterItemName, {
+                                                            max: 1,
+                                                            time: 120000,
+                                                            errors: ['time']
+                                                        })
                                                             .then(collected => {
                                                                 message.channel.send("URL:").then(() => {
-                                                                    message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                                    message.channel.awaitMessages(filterItemName, {
+                                                                        max: 1,
+                                                                        time: 120000,
+                                                                        errors: ['time']
+                                                                    })
                                                                         .then(collected => {
                                                                             message.channel.send("Last game:").then(() => {
-                                                                                message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                                                message.channel.awaitMessages(filterItemName, {
+                                                                                    max: 1,
+                                                                                    time: 120000,
+                                                                                    errors: ['time']
+                                                                                })
                                                                                     .then(collected => {
                                                                                         message.channel.send("URL:").then(() => {
-                                                                                            message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
+                                                                                            message.channel.awaitMessages(filterItemName, {
+                                                                                                max: 1,
+                                                                                                time: 120000,
+                                                                                                errors: ['time']
+                                                                                            })
                                                                                                 .then(collected => {
                                                                                                     message.channel.send("Alright all set!");
                                                                                                     sendVoting(message, gameList, messageID);
@@ -383,23 +407,23 @@ function voting(message, messageID){
                                                                                     .catch(collected => {
                                                                                         message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
                                                                                     });
-                                                                                        });
-                                                                                    })
+                                                                            });
+                                                                        })
                                                                         .catch(collected => {
                                                                             message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
                                                                         });
-                                                                                        });
-                                                                                    })
+                                                                });
+                                                            })
                                                             .catch(collected => {
                                                                 message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
                                                             });
-                                                                                        });
-                                                                                    })
+                                                    });
+                                                })
                                                 .catch(collected => {
                                                     message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
                                                 });
-                                                                                        });
-                                                                                    })
+                                        });
+                                    })
                                     .catch(collected => {
                                         message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
                                     });
@@ -418,22 +442,23 @@ function voting(message, messageID){
 
 }
 
-function endVoteCommand(message, messageID){
+function endVoteCommand(message, messageID) {
     console.log("endvoting")
 
     console.log(messageID[0])
     console.log(messageID[1])
-    const channelMessage = message.guild.channels.cache.find(channel =>  channel.id === messageID[0])
+    const channelMessage = message.guild.channels.cache.find(channel => channel.id === messageID[0])
     console.log(channelMessage)
 
-    channelMessage.messages.fetch(messageID[1]).then(element=> countVotes(channelMessage, element.reactions.cache.toJSON(),messageID[1], message))
+    channelMessage.messages.fetch(messageID[1]).then(element => countVotes(channelMessage, element.reactions.cache.toJSON(), messageID[1], message))
 }
-function countVotes(message, element, messageID, messageOwner){
-    const hearts = [":heart:",":orange_heart:", ":green_heart:", ":yellow_heart:" ]
+
+function countVotes(message, element, messageID, messageOwner) {
+    const hearts = [":heart:", ":orange_heart:", ":green_heart:", ":yellow_heart:"]
     console.log(element)
-    let highest = [0,0]
+    let highest = [0, 0]
     for (let i = 0; i < element.length; i++) {
-        if (element[i].count > highest[1]){
+        if (element[i].count > highest[1]) {
             highest[0] = i;
             highest[1] = element[i].count
         }
@@ -441,43 +466,46 @@ function countVotes(message, element, messageID, messageOwner){
     }
     message.messages.fetch(messageID)
         .then(msg => {
-            msg.edit({"embed": {
+            msg.edit({
+                "embed": {
                     "title": "***Voting Ended***",
 
-                    "description": ":heart: ["+gameList[0]+"]"+"("+gameList[1]+")\n" +
-                        ":orange_heart: ["+gameList[2]+"]"+"("+gameList[3]+")\n" +
-                        ":green_heart: ["+gameList[4]+"]"+"("+gameList[5]+")\n" +
-                        ":yellow_heart: ["+gameList[6]+"]"+"("+gameList[7]+")\n\n" +
-                        "Won: "+ hearts[highest[0]] + " " + gameList[highest[0]*2],
+                    "description": ":heart: [" + gameList[0] + "]" + "(" + gameList[1] + ")\n" +
+                        ":orange_heart: [" + gameList[2] + "]" + "(" + gameList[3] + ")\n" +
+                        ":green_heart: [" + gameList[4] + "]" + "(" + gameList[5] + ")\n" +
+                        ":yellow_heart: [" + gameList[6] + "]" + "(" + gameList[7] + ")\n\n" +
+                        "Won: " + hearts[highest[0]] + " " + gameList[highest[0] * 2],
                     "color": 4385012,
                     "footer": {
-                        "text": "Added by "+ messageOwner.author.username
-                    }}});
+                        "text": "Added by " + messageOwner.author.username
+                    }
+                }
+            });
         });
 
     messageOwner.channel.send("Alright all set!")
 }
 
-function giveAway(message){
+function giveAway(message) {
     const giveawayUserIdRequester = message.author.id
     let channelId;
-    let totalTime= [];
+    let totalTime = [];
     let totalWinners;
     let giveawayName;
 
 
     const filterSetChannel = (response) => {
         if (response.author.id === giveawayUserIdRequester) {
-            console.log("channel: " + response.content.slice(2,20))
-            channelId = response.content.slice(2,20);
+            console.log("channel: " + response.content.slice(2, 20))
+            channelId = response.content.slice(2, 20);
             return true;
         }
         return false;
     };
     const filterSetTime = (response) => {
         if (response.author.id === giveawayUserIdRequester) {
-            console.log("time: " + response.content.slice(0,-1) +" "+ response.content.slice(-1))
-            totalTime.push(response.content.slice(0,-1))
+            console.log("time: " + response.content.slice(0, -1) + " " + response.content.slice(-1))
+            totalTime.push(response.content.slice(0, -1))
             totalTime.push(response.content.slice(-1))
             return true;
         }
@@ -502,9 +530,6 @@ function giveAway(message){
     };
 
 
-
-
-
     message.channel.send(" let's set up an giveaway! \n`Please type the name of a channel in this server.`").then(() => {
         message.channel.awaitMessages(filterSetChannel, {max: 1, time: 120000, errors: ['time']})
             .then(collected => {
@@ -512,10 +537,18 @@ function giveAway(message){
                     message.channel.awaitMessages(filterSetTime, {max: 1, time: 120000, errors: ['time']})
                         .then(collected => {
                             message.channel.send("`Please enter a number of winners between 1 and 10.`").then(() => {
-                                message.channel.awaitMessages(filterSetWinners, {max: 1, time: 120000, errors: ['time']})
+                                message.channel.awaitMessages(filterSetWinners, {
+                                    max: 1,
+                                    time: 120000,
+                                    errors: ['time']
+                                })
                                     .then(collected => {
                                         message.channel.send("Finally,`What do you want to giveaway` ?").then(() => {
-                                            message.channel.awaitMessages(filterSetName, {max: 1, time: 120000, errors: ['time']})
+                                            message.channel.awaitMessages(filterSetName, {
+                                                max: 1,
+                                                time: 120000,
+                                                errors: ['time']
+                                            })
 
                                                 .then(collected => {
                                                     message.channel.send("Alright all set!");
@@ -542,136 +575,312 @@ function giveAway(message){
     });
 
 
-
 }
 
-function startGiveaway(message, channelId, totalTime, totalWinners, giveawayName){
+function startGiveaway(message, channelId, totalTime, totalWinners, giveawayName) {
     let deadline;
-    if(totalTime[1].toLowerCase() === "d"){
-        deadline = new Date(Date.now() + totalTime[0]* 24*3600*1000)
-    }else if (totalTime[1].toLowerCase() === "h"){
-        deadline = new Date(Date.now() + totalTime[0]* 3600*1000)
+    if (totalTime[1].toLowerCase() === "d") {
+        deadline = new Date(Date.now() + totalTime[0] * 24 * 3600 * 1000)
+    } else if (totalTime[1].toLowerCase() === "h") {
+        deadline = new Date(Date.now() + totalTime[0] * 3600 * 1000)
 
-    }else if (totalTime[1].toLowerCase() === "m") {
-        deadline = new Date(Date.now() + totalTime[0]* 60*1000)
+    } else if (totalTime[1].toLowerCase() === "m") {
+        deadline = new Date(Date.now() + totalTime[0] * 60 * 1000)
 
-    }else if (totalTime[1].toLowerCase() === "s"){
-        deadline = new Date(Date.now() + totalTime[0]* 1000)
+    } else if (totalTime[1].toLowerCase() === "s") {
+        deadline = new Date(Date.now() + totalTime[0] * 1000)
     }
     sendGiveaway(message, channelId, deadline, giveawayName, totalWinners);
 
 }
 
 function addToDatabase(message, message_id, channelId, deadline, giveawayName, totalWinners) { //will be used later
-    let sql = "INSERT INTO giveaways (channel, winners, name, time, message_id) VALUES ('" + channelId + "', '" + totalWinners + "', '" + giveawayName +  "', '" + deadline.getTime() + "', '" + message_id +  "')";
+    let sql = "INSERT INTO giveaways (channel, winners, name, time, message_id, ended) VALUES ('" + channelId + "', '" + totalWinners + "', '" + giveawayName + "', '" + deadline + "', '" + message_id + "', '" + 0 + "')";
     con.query(sql, function (err, result) {
         if (err) throw err;
-        console.log(result)
-        console.log("1 record inserted");
+        console.log("GiveAway id Added:" + result.insertId);
+        updateGiveaway(message, result.insertId, message_id, channelId, giveawayName, totalWinners)
     });
-    updateGiveaway(message, deadline, message_id, channelId, giveawayName, totalWinners)
 
 
 }
 
-function sendGiveaway(message, channelId, deadline, name, totalWinners){
-    const channelMessage = message.guild.channels.cache.find(channel =>  channel.id === channelId)
+function sendGiveaway(message, channelId, deadline, name, totalWinners) {
+    const channelMessage = message.guild.channels.cache.find(channel => channel.id === channelId)
 
     let now = new Date().getTime();
     let t = deadline - now;
     let days = Math.floor(t / (1000 * 60 * 60 * 24));
-    let hours = Math.floor((t%(1000 * 60 * 60 * 24))/(1000 * 60 * 60));
+    let hours = Math.floor((t % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     let minutes = Math.floor((t % (1000 * 60 * 60)) / (1000 * 60));
     let seconds = Math.floor((t % (1000 * 60)) / 1000);
 
 
-    channelMessage.send({"embed": {
+    channelMessage.send({
+        "embed": {
             "title": "" + name,
-            "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days "+ hours + " hours " + minutes + " minutes "  + seconds + " seconds",
+            "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days " + hours + " hours " + minutes + " minutes " + seconds + " seconds",
             "color": 4385012,
             "footer": {
                 "text": "Created by " + message.author.username
-            }}}).then(sentEmbed => {
-                addToDatabase(message, sentEmbed.id, channelId, deadline, name, totalWinners);
-        sentEmbed.react("723120954468990996")})
+            }
+        }
+    }).then(sentEmbed => {
+        addToDatabase(message, sentEmbed.id, channelId, deadline, name, totalWinners);
+        sentEmbed.react("723120954468990996")
+    })
 
 }
 
 
-function getReactions(message, channelMessage, message_id, name, totalWinners){
-    channelMessage.messages.fetch(message_id).then(element=> endGiveaway(message, channelMessage, message_id, name, totalWinners, element.reactions.cache.toJSON()))
+function getUsers(msg, giveaway_id) {
+    const filter = (reaction, user) => reaction.emoji.id === '723120954468990996'
+    msg.awaitReactions(filter, {time: 15000})
+        .then(collected => addUsersToDatabase(collected.toJSON(), giveaway_id))
+        .catch(console.error);
+}
+
+function addUsersToDatabase(users, giveaway_id) {
+    let databaseUsers = [];
+
+    con.query("SELECT * FROM users WHERE giveaway_id = " + giveaway_id, function (err, result) {
+        if (err) throw console.error(err);
+
+        for (let enteredUsers of result) {
+            if (!databaseUsers.includes(enteredUsers.userid)) {
+                databaseUsers.push(enteredUsers.userid)
+            }
+        }
+
+        if (!(users.length === 0))
+            users = users[0].users
+        for (let user of users) {
+            if (!databaseUsers.includes(user)) {
+                let sql = "INSERT INTO users (userid, giveaway_id) VALUES ('" + user + "', '" + giveaway_id + "')";
+                con.query(sql, function (err, result) {
+                    if (err) throw err;
+                    console.log("person added:" + user + "in: " + giveaway_id)
+                })
+
+
+            }
+
+        }
+    })
 
 }
 
 
-function updateGiveaway(message, deadline, message_id, channel_id, name, totalWinners){
-    const giveawayChannel = message.guild.channels.cache.find(channel =>  channel.id === channel_id)
+function updateGiveaway(message, database_id, message_id, channel_id, name, totalWinners) {
 
-    let x = setInterval(function() {
+
+    let deadline = null;
+    con.query("SELECT * FROM giveaways WHERE id = " + database_id, function (err, result) {
+        if (err) throw err;
+        deadline = new Date(result[0].time)
+        console.log("deadline: " + deadline)
+    });
+
+    const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === channel_id)
+
+
+    let x = setInterval(function () {
         let now = new Date().getTime();
         let t = deadline - now;
         let days = Math.floor(t / (1000 * 60 * 60 * 24));
-        let hours = Math.floor((t%(1000 * 60 * 60 * 24))/(1000 * 60 * 60));
+        let hours = Math.floor((t % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         let minutes = Math.floor((t % (1000 * 60 * 60)) / (1000 * 60));
         let seconds = Math.floor((t % (1000 * 60)) / 1000);
 
         giveawayChannel.messages.fetch(message_id)
             .then(msg => {
-                msg.edit({"embed": {
-                "title": "" + name,
-                "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days "+ hours + " hours " + minutes + " minutes "  + seconds + " seconds",
-                "color": 4385012,
-                "footer": {
-                    "text": "Created by " + message.author.username
-                }}})})
+                msg.edit({
+                    "embed": {
+                        "title": "" + name,
+                        "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days " + hours + " hours " + minutes + " minutes " + seconds + " seconds",
+                        "color": 4385012,
+                        "footer": {
+                            "text": "Created by " + message.author.username + " total winners " + totalWinners
+                        }
+                    }
+                })
+            })
+        giveawayChannel.messages.fetch(message_id)
+            .then(msg => getUsers(msg, database_id))
         if (t < 0) {
             clearInterval(x);
-            getReactions(message, giveawayChannel, message_id, name, totalWinners)
+            endGiveaway(message, giveawayChannel, message_id, name, totalWinners, database_id)
         }
 
-    }, 5000);
-
-}
-
-function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, element){
-    let winner;
-    console.log(element)
-    for (let i = 0; i < element.length; i++) {
-        console.log(element[i])
-        console.log(element[i].users)
-        console.log(element[i].emojiID.toString())
-
-
-        if (element[i].emojiID.toString() === "723120954468990996"){
-            console.log("was here")
-            let randomNumber = Math.floor(Math.random() * (element[i].count - 2 + 1)) + 1;
-            console.log(randomNumber)
-            winner = element[i].users[randomNumber]
-        }
-
-        message.channel.send("<@" +winner+">")
-        }
-
-
-
-    giveawayChannel.messages.fetch(message_id)
-        .then(msg => {
-            msg.edit({"embed": {
-                    "title": "" + name,
-                    "description": "React with <:DropZone:723120954468990996> to enter!\n ENDED",
-                    "color": 4385012,
-                    "footer": {
-                        "text": "Created by " +message.author.username
-                    }}})})
-
-    giveawayChannel.send("congrats "+ "<@" +winner+">"+ ", You won : " + name)
+    }, 10000);
 
 }
 
 
+function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, giveaway_id) {
+    let databaseUsers = [];
+    let winners = "";
+    let winnerNumbers = [];
+
+    con.query("UPDATE giveaways SET ended = 1 WHERE message_id = " + message_id, function (err, result) {
+        if (err) throw err;
+
+    });
+
+    con.query("SELECT * FROM users WHERE giveaway_id = " + giveaway_id, function (err, result) {
+        if (err) throw console.error(err);
+
+        for (let enteredUsers of result) {
+            if (!databaseUsers.includes(enteredUsers.userid)) {
+                databaseUsers.push(enteredUsers.userid)
+            }
+        }
 
 
+        for (let i = 0; i < totalWinners; i++) {
+            let randomNumber = Math.floor(Math.random() * (databaseUsers.length - 2 + 1)) + 1;
+            if (!winnerNumbers.includes(randomNumber) && databaseUsers[randomNumber] !== "720631628501876799") {
+                winnerNumbers.push(randomNumber)
+                winners += " <@" + databaseUsers[randomNumber] + ">,"
+            } else {
+                i--
+            }
+        }
 
 
+        giveawayChannel.messages.fetch(message_id)
+            .then(msg => {
+                msg.edit({
+                    "embed": {
+                        "title": "" + name,
+                        "description": "React with <:DropZone:723120954468990996> to enter!\n ENDED",
+                        "color": 4385012,
+                        "footer": {
+                            "text": "Created by " + message.author.username
+                        }
+                    }
+                })
+            })
+
+        giveawayChannel.send("congrats " + winners + " You won : " + name)
+        console.log("giveaways had ended id: " + giveaway_id)
+    })
+}
+
+function checkCommand(message) {
+    con.query("SELECT * FROM giveaways", function (err, result, fields) {
+        if (err) throw err;
+
+        for (let giveaway of result) {
+            if (giveaway.ended !== 1) {
+                console.log("giveaway id:" + giveaway.id)
+                console.log("message id:" + giveaway.message_id)
+                console.log("channel id:" + giveaway.channel)
+                console.log("giveaway name:" + giveaway.name)
+                console.log("total winners:" + giveaway.winners)
+
+                updateGiveaway(message, giveaway.id, giveaway.message_id, giveaway.channel, giveaway.name, giveaway.winners)
+
+            }
+
+        }
+    });
+}
+
+function levelMessage(message) {
+    let user = [];
+    let userExists = false;
+    con.query("SELECT * FROM levels", function (err, result) {
+        if (err) throw console.error(err);
+
+        for (let enteredUsers of result) {
+            if (message.author.id === enteredUsers.user_id) {
+                userExists = true;
+                user.push(enteredUsers.user_id)
+                user.push(enteredUsers.level)
+                user.push(enteredUsers.totalMessages)
+                user.push(enteredUsers.totalXp)
+                user.push(enteredUsers.lastMessage)
+                addLevels(user)
+
+            }
+        }
+        if (!userExists) {
+            addNewLevelUser(message.author.id);
+        }
+    })
+
+}
+
+function addLevels(user) {
+    let lastMessage = new Date(user[4])
+    let now = new Date().getTime();
+    let t = lastMessage - now;
+    if (t < -60000) {
+        let randomXP = Math.floor(Math.random() * Math.floor(config.maxXP)) + 1;
+        let newTotalXp = (parseInt(user[3]) + randomXP).toString()
+        let level = user[1]
+        let totalMessages = (parseInt(user[2]) + 1).toString()
+        if (newTotalXp > calculatingLevel(parseInt(user[1]) + 1)) {
+            level = (parseInt(level) + 1).toString()
+        }
+        let date = new Date()
+
+        con.query("UPDATE levels SET level = " + level + ", totalMessages = " + totalMessages + ", totalXp = " + newTotalXp + ", lastMessage = '" + date + "'  WHERE user_id = " + user[0], function (err, result) {
+            if (err) throw err;
+
+        });
+    }
+}
+
+function calculatingLevel(x) {
+    let pow = Math.pow(2, (x - 1) / 7)
+    let res = ((x - 1) * 300 * pow) / 4;
+    return res;
+}
+
+function addNewLevelUser(userId) {
+    let date = new Date()
+    let sql = "INSERT INTO levels (user_id, level, totalMessages, totalXp, lastMessage) VALUES ('" + userId + "', '" + "1" + "', '" + "1" + "', '" + "2" + "', '" + date + "')";
+    con.query(sql, function (err, result) {
+        if (err) throw err;
+    })
+
+}
+
+function rankCommand(message){
+    let user = [];
+    let name;
+    let userExists = false;
+    con.query("SELECT * FROM levels", function (err, result) {
+        if (err) throw console.error(err);
+
+        for (let enteredUsers of result) {
+            if (message.author.id === enteredUsers.user_id) {
+                userExists = true;
+                name = message.author.username
+                let xpToGo = Math.round( calculatingLevel(parseInt(enteredUsers.level) + 1))
+                message.channel.send({
+                    "embed": {
+                        "title": "" + name,
+                        "description": "Level " + enteredUsers.level + "\n " + enteredUsers.totalXp + " / " + xpToGo + " XP \n " + enteredUsers.totalMessages + " total messages",
+                        "color": 4385012,
+                        "footer": {
+                            "text": "rank for " + message.author.username
+                        }
+                    }
+                })
+            }
+        }
+        if (!userExists){
+            message.channel.send("<:DropZone:723120954468990996> You aren't ranked yet. Send some messages first, then try again.")
+        }
+
+    })
+
+}
 
 client.login(token);
+
+
+

@@ -3,5 +3,6 @@
   "steamGifts": "720569016824889345",
   "giveAway": "466692261602656257",
   "admin": "181799020207800323",
-  "adminRole": "CREATORS"
+  "adminRole": "CREATORS",
+  "maxXP": 3
 }

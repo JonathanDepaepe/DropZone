@@ -209,6 +209,7 @@ function helpCommand(arguments, receivedMessage) {
         .setDescription("Commands")
         .setColor("#42e8f4")
         .addField("Music", "&play, &skip, &stop")
+        .addField("leveling","&rank, &claim")
         .setFooter("requested by " + receivedMessage.author.username)
         .setTimestamp();
 
@@ -316,33 +317,6 @@ function sendToSteamGiftsChannel(message, gameName, steamGiftsURL, pictureURL) {
     })
 }
 
-function sendVoting(message, gameList, messageID) {
-
-    const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === messageID);
-
-
-    giveawayChannel.send("@everyone\n", {
-        "embed": {
-            "title": "***Voting***",
-
-            "description": ":heart: [" + gameList[0] + "]" + "(" + gameList[1] + ")\n" +
-                ":orange_heart: [" + gameList[2] + "]" + "(" + gameList[3] + ")\n" +
-                ":green_heart: [" + gameList[4] + "]" + "(" + gameList[5] + ")\n" +
-                ":yellow_heart: [" + gameList[6] + "]" + "(" + gameList[7] + ")",
-            "color": 4385012,
-            "footer": {
-                "text": "Voting added by " + message.author.username
-            }
-        }
-    }).then(sentEmbed => {
-        sentEmbed.react("❤️")
-        sentEmbed.react("🧡")
-        sentEmbed.react("💚")
-        sentEmbed.react("💛")
-    })
-
-}
-
 function voting(message, messageID) {
     gameList = [];
 
@@ -443,6 +417,47 @@ function voting(message, messageID) {
 
 
 }
+
+
+
+function sendVoting(message, gameList, channelId, date) {
+
+    const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === channelId);
+
+    giveawayChannel.send("@everyone\n", {
+        "embed": {
+            "title": "***Voting***",
+            "timestamp": "" + date,
+            "description": ":heart: [" + gameList[0] + "]" + "(" + gameList[1] + ")\n" +
+                ":orange_heart: [" + gameList[2] + "]" + "(" + gameList[3] + ")\n" +
+                ":green_heart: [" + gameList[4] + "]" + "(" + gameList[5] + ")\n" +
+                ":yellow_heart: [" + gameList[6] + "]" + "(" + gameList[7] + ")",
+            "color": 4385012,
+            "footer": {
+                "text": "voting ends"
+            }
+        }
+    }).then(sentEmbed => {
+        sentEmbed.react("❤️")
+        sentEmbed.react("🧡")
+        sentEmbed.react("💚")
+        sentEmbed.react("💛")
+        addVotingToDatabase(channelId, sentEmbed.id, gameList)
+
+    })
+
+}
+
+function addVotingToDatabase(channelId, message_id, gameList, endDate) {
+    let sql = "INSERT INTO votings (channel_id, message_id, gameName1, url1, gameName2, url2, gameName3, url3, gameName4, url4, time) VALUES ('" + channelId + "', '" + message_id + "', '" + gameList[0] + "', '" + gameList[1] + "', '" + gameList[2] + "', '" + gameList[3] +"', '" + gameList[4] +"', '" + gameList[5] +"', '" + gameList[6] +"', '" + gameList[7] +"', '" + endDate + "')";
+    con.query(sql, function (err, result) {
+        if (err) throw err;
+        console.log("GiveAway id Added:" + result.insertId);
+        updateGiveaway(message, result.insertId, message_id, channelId, giveawayName, totalWinners)
+    });
+}
+
+
 
 function endVoteCommand(message, messageID) {
     console.log("endvoting")
@@ -927,10 +942,55 @@ function claimCommand(message) {
                         }
                     })
                 } else {
-                    message.author.send("It looks like we are out of stuck. Please contact ```@Silentz420#9436```")
+                    message.author.send("It looks like we are out of stuck. Please contact **@Silentz420#9436**")
                 }
             })
+        } else if (config.claimInvites[result[0].claimedInvites] <= result[0].invites){
+            con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
+                if (err) throw console.error(err);
+                if (result1.length >= 3) {
+
+                    let newClaimedNumber = result[0].claimedInvites + 1;
+                    con.query("UPDATE levels SET claimedInvites = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
+                        if (err) throw err;
+
+                    });
+
+                    for (let i = 0; i < 3; i++) {
+                        steamKey += "\n" + result1[i].gameName + " | " + result1[i].gameKey
+                        con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[i].id, function (err, result) {
+                            if (err) throw err;
+
+                        });
+                    }
+                    console.log("user: " + message.author.id + " claimed " + steamKey)
+
+                    message.author.send({
+                        "embed": {
+                            "title": "Level Reward",
+                            "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your keys:** ```" + steamKey + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
+                            "color": 254714,
+                            "timestamp": "" + date,
+                            "footer": {
+                                "icon_url": "https://i.imgur.com/A4OSs19.jpg",
+                                "text": "SilentZ420"
+                            },
+                            "thumbnail": {
+                                "url": "https://i.imgur.com/TIDrbVI.png"
+                            }
+                        }
+                    })
+                } else {
+                    message.author.send("It looks like we are out of stuck. Please contact **@Silentz420#9436**")
+                }
+            })
+
         }
+        else {
+            message.author.send("You don't have any rewards. If this is false please contact **@Silentz420#9436**")
+        }
+        message.channel.send("<:DropZone:723120954468990996> A private message has been sent to you. <@" + userId +">")
+
     })
 }
 

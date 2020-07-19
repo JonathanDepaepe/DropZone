@@ -5,5 +5,6 @@
   "admin": "181799020207800323",
   "adminRole": "CREATORS",
   "maxXP": 3,
-  "claimLevels": [5,10,15,20,25,30,35]
+  "claimLevels": [5,10,15,20,25,30,35],
+  "claimInvites": [5,10,20,30,40]
 }

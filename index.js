@@ -44,6 +44,10 @@ client.once("disconnect", () => {
 
 client.on("message", async message => {
     if (message.author.bot) return;
+    if (message.content.startsWith(`${prefix}sendKey`)) {
+        sendGiveawayKey(message);
+    }
+
     if (message.guild === null) return;
     levelMessage(message);
     if (!message.content.startsWith(prefix)) return;
@@ -992,6 +996,38 @@ function claimCommand(message) {
         message.channel.send("<:DropZone:723120954468990996> A private message has been sent to you. <@" + userId +">")
 
     })
+}
+
+function sendGiveawayKey(message){
+    if (message.author.id === config.admin){
+        let splitCommand = message.content.split(" ")
+        let userId = splitCommand[1]
+        let key = splitCommand[2]
+        let gameName = '';
+        for (let i = 3;splitCommand.length > i;i++){
+            gameName +=  splitCommand[i] +' '
+        }
+        let date = new Date()
+        const giveawayChannel = client.users.cache.find(channel => channel.id === userId);
+        giveawayChannel.send({
+            "embed": {
+                "title": "GiveAway",
+                "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your key:** ```" + key + " | "+ gameName+ "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
+                "color": 254714,
+                "timestamp": "" + date,
+                "footer": {
+                    "icon_url": "https://i.imgur.com/A4OSs19.jpg",
+                    "text": "SilentZ420"
+                },
+                "thumbnail": {
+                    "url": "https://i.imgur.com/TIDrbVI.png"
+                }
+            }
+        })
+    }
+
+
+
 }
 
 client.login(token);

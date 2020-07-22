@@ -4,7 +4,6 @@ const {token} = require("./auth.json");
 const {prefix} = require("./config.json")
 const ytdl = require("ytdl-core");
 const config = require("./config.json")
-let gameList = [];
 const mysql = require('mysql')
 
 const queue = new Map();
@@ -89,7 +88,7 @@ function processCommand(receivedMessage) {
     } else if (primaryCommand == "check") {
         checkCommand(receivedMessage)
     } else if (primaryCommand == "rank") {
-        rankCommand(receivedMessage)
+        rankCommand(receivedMessage, arguments)
     } else if (primaryCommand == "claim") {
         claimCommand(receivedMessage)
     } else {
@@ -322,7 +321,7 @@ function sendToSteamGiftsChannel(message, gameName, steamGiftsURL, pictureURL) {
 }
 
 function voting(message, messageID) {
-    gameList = [];
+    let gameList = [];
 
     const filterItemName = (response) => {
         if (response.author.id === config.admin && response.content.length > 2) {
@@ -424,7 +423,11 @@ function voting(message, messageID) {
 
 
 
-function sendVoting(message, gameList, channelId, date) {
+function sendVoting(message, gameList, channelId) {
+
+    let date;
+    date = new Date(Date.now() + config.lengthOfDaysVoting * 24 * 3600 * 1000)
+
 
     const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === channelId);
 
@@ -446,35 +449,44 @@ function sendVoting(message, gameList, channelId, date) {
         sentEmbed.react("🧡")
         sentEmbed.react("💚")
         sentEmbed.react("💛")
-        addVotingToDatabase(channelId, sentEmbed.id, gameList)
+        addVotingToDatabase(message, channelId, sentEmbed.id, gameList, date)
 
     })
 
 }
 
-function addVotingToDatabase(channelId, message_id, gameList, endDate) {
+function addVotingToDatabase(message, channelId, message_id, gameList, endDate) {
     let sql = "INSERT INTO votings (channel_id, message_id, gameName1, url1, gameName2, url2, gameName3, url3, gameName4, url4, time) VALUES ('" + channelId + "', '" + message_id + "', '" + gameList[0] + "', '" + gameList[1] + "', '" + gameList[2] + "', '" + gameList[3] +"', '" + gameList[4] +"', '" + gameList[5] +"', '" + gameList[6] +"', '" + gameList[7] +"', '" + endDate + "')";
     con.query(sql, function (err, result) {
         if (err) throw err;
-        console.log("GiveAway id Added:" + result.insertId);
-        updateGiveaway(message, result.insertId, message_id, channelId, giveawayName, totalWinners)
+        waitingEndVoting(message, channelId, message_id,gameList,endDate)
     });
 }
 
 
 
-function endVoteCommand(message, messageID) {
-    console.log("endvoting")
-
-    console.log(messageID[0])
-    console.log(messageID[1])
-    const channelMessage = message.guild.channels.cache.find(channel => channel.id === messageID[0])
-    console.log(channelMessage)
-
-    channelMessage.messages.fetch(messageID[1]).then(element => countVotes(channelMessage, element.reactions.cache.toJSON(), messageID[1], message))
+function getTheMessage(message, channelId, messageID, gameList, endDate) {
+    const channelMessage = message.guild.channels.cache.find(channel => channel.id === channelId)
+    channelMessage.messages.fetch(messageID).then(element => countVotes(channelMessage, messageID, gameList, endDate, element.reactions.cache.toJSON()))
 }
 
-function countVotes(message, element, messageID, messageOwner) {
+function waitingEndVoting(message, channelId, messageID, gameList, endDate) {
+
+
+    let x = setInterval(function () {
+        let now = new Date().getTime();
+        let t = endDate - now;
+        console.log(t)
+        if (t < 0) {
+            clearInterval(x);
+            getTheMessage(message, channelId, messageID, gameList, endDate)
+        }
+
+
+    }, 10000);
+}
+
+function countVotes(message, messageID, gameList, date, element) {
     const hearts = [":heart:", ":orange_heart:", ":green_heart:", ":yellow_heart:"]
     console.log(element)
     let highest = [0, 0]
@@ -485,12 +497,18 @@ function countVotes(message, element, messageID, messageOwner) {
         }
 
     }
+
+    con.query("UPDATE votings SET ended = 1 WHERE message_id = " + messageID, function (err, result) {
+        if (err) throw err;
+
+    });
+
     message.messages.fetch(messageID)
         .then(msg => {
             msg.edit({
                 "embed": {
                     "title": "***Voting Ended***",
-
+                    "timestamp": "" + date,
                     "description": ":heart: [" + gameList[0] + "]" + "(" + gameList[1] + ")\n" +
                         ":orange_heart: [" + gameList[2] + "]" + "(" + gameList[3] + ")\n" +
                         ":green_heart: [" + gameList[4] + "]" + "(" + gameList[5] + ")\n" +
@@ -498,13 +516,11 @@ function countVotes(message, element, messageID, messageOwner) {
                         "Won: " + hearts[highest[0]] + " " + gameList[highest[0] * 2],
                     "color": 4385012,
                     "footer": {
-                        "text": "Added by " + messageOwner.author.username
+                        "text": "voting ends"
                     }
                 }
             });
         });
-
-    messageOwner.channel.send("Alright all set!")
 }
 
 function giveAway(message) {
@@ -789,19 +805,36 @@ function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, g
 }
 
 function checkCommand(message) {
+    con.query("SELECT * FROM votings", function (err, result, fields) {
+        if (err) throw err;
+
+        for (let voting of result) {
+            if (voting.ended === 0) {
+                let gameList = [];
+                gameList.push(voting.gameName1)
+                gameList.push(voting.url1)
+                gameList.push(voting.gameName2)
+                gameList.push(voting.url2)
+                gameList.push(voting.gameName3)
+                gameList.push(voting.url3)
+                gameList.push(voting.gameName4)
+                gameList.push(voting.url4)
+                let date = new Date(voting.time)
+                waitingEndVoting(message, voting.channel_id, voting.message_id, gameList, date)
+
+            }
+
+        }
+    });
+
+
+
     con.query("SELECT * FROM giveaways", function (err, result, fields) {
         if (err) throw err;
 
         for (let giveaway of result) {
             if (giveaway.ended !== 1) {
-                console.log("giveaway id:" + giveaway.id)
-                console.log("message id:" + giveaway.message_id)
-                console.log("channel id:" + giveaway.channel)
-                console.log("giveaway name:" + giveaway.name)
-                console.log("total winners:" + giveaway.winners)
-
                 updateGiveaway(message, giveaway.id, giveaway.message_id, giveaway.channel, giveaway.name, giveaway.winners)
-
             }
 
         }
@@ -822,7 +855,7 @@ function levelMessage(message) {
                 user.push(enteredUsers.totalMessages)
                 user.push(enteredUsers.totalXp)
                 user.push(enteredUsers.lastMessage)
-                addLevels(user)
+                addLevels(user,message)
 
             }
         }
@@ -833,7 +866,7 @@ function levelMessage(message) {
 
 }
 
-function addLevels(user) {
+function addLevels(user,message) {
     let lastMessage = new Date(user[4])
     let now = new Date().getTime();
     let t = lastMessage - now;
@@ -847,6 +880,9 @@ function addLevels(user) {
         newTotalXp = (parseInt(user[3]) + randomXP).toString()
         if (newTotalXp > calculatingLevel(parseInt(user[1]) + 1)) {
             level = (parseInt(level) + 1).toString()
+            const levelChannel = message.guild.channels.cache.find(channel => channel.id === config.levelMessageChannel);
+            levelChannel.send("<@"+ user[0] +">, You are now level " + level + "!")
+            checkLevel(user,level,message)
         }
         date = new Date()
     }
@@ -854,6 +890,14 @@ function addLevels(user) {
         if (err) throw err;
 
     });
+}
+
+function checkLevel(user, level, message) {
+    if (level === "5"){
+        const role = message.guild.roles.cache.find(role => role.name === "Bronze")
+        message.member.roles.add(role)
+    }
+
 }
 
 function calculatingLevel(x) {
@@ -872,30 +916,58 @@ function addNewLevelUser(userId) {
 }
 
 function rankCommand(message) {
-    let user = [];
     let name;
+    let userId;
+    let argument = message.content.slice(6)
+    let usedArgument = false;
+    if (argument.length !== 0){
+        usedArgument = true;
+        if (argument.includes("<@")){
+            userId = argument.slice(3,21)
+            name = message.mentions.users.first().username
+        }else if (argument.includes("#")){
+            let slitted = argument.split('#')
+            let discordUser = client.users.cache.find(user => user.username === slitted[0])
+            userId = discordUser.id
+            name = discordUser.username
+        }else if (typeof argument == 'number'){
+            userId =  argument
+            let discordUser = client.users.cache.find(user => user.id === userId)
+            name = discordUser.username
+        }
+
+    } else{
+        name = message.author.username
+        userId = message.author.id
+    }
+
+    let user = [];
+    let date = new Date();
     let userExists = false;
     con.query("SELECT * FROM levels", function (err, result) {
         if (err) throw console.error(err);
 
         for (let enteredUsers of result) {
-            if (message.author.id === enteredUsers.user_id) {
+            if (userId === enteredUsers.user_id) {
                 userExists = true;
-                name = message.author.username
+
                 let xpToGo = Math.round(calculatingLevel(parseInt(enteredUsers.level) + 1))
                 message.channel.send({
                     "embed": {
                         "title": "" + name,
+                        "timestamp": date,
                         "description": "Level " + enteredUsers.level + "\n " + enteredUsers.totalXp + " / " + xpToGo + " XP \n " + enteredUsers.totalMessages + " total messages",
                         "color": 4385012,
                         "footer": {
-                            "text": "rank for " + message.author.username
+                            "text": "" + message.author.username
                         }
                     }
                 })
             }
         }
-        if (!userExists) {
+        if(usedArgument && !userExists){
+            message.channel.send("<:DropZone:723120954468990996> Did not find the user. Use @tag, There user ID or like Silentz420#9436")
+        } else if (!userExists) {
             message.channel.send("<:DropZone:723120954468990996> You aren't ranked yet. Send some messages first, then try again.")
         }
 

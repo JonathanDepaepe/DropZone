@@ -6,5 +6,7 @@
   "adminRole": "CREATORS",
   "maxXP": 3,
   "claimLevels": [5,10,15,20,25,30,35],
-  "claimInvites": [5,10,20,30,40]
+  "claimInvites": [5,10,20,30,40],
+  "lengthOfDaysVoting": 1,
+  "levelMessageChannel": "572132742578569222"
 }

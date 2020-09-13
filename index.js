@@ -91,7 +91,10 @@ function processCommand(receivedMessage) {
         rankCommand(receivedMessage, arguments)
     } else if (primaryCommand == "claim") {
         claimCommand(receivedMessage)
-    } else if (primaryCommand == "banReward") {
+    } else if (primaryCommand == "about") {
+        aboutUsCommand(receivedMessage)
+    }
+    else if (primaryCommand == "banReward") {
         banRewardCommand(receivedMessage, arguments)
     }else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
@@ -1108,6 +1111,49 @@ function sendGiveawayKey(message) {
 function banRewardCommand(message, argument){
     if (message.author.id === "181799020207800323"){
         message.channel.send("" + argument[0] + " is now banned from claiming rewards")
+    }
+}
+
+function aboutUsCommand(message){
+    if (message.author.id === "181799020207800323"){
+        message.channel.send({
+
+            "embed": {
+                "title": "About Us",
+                "description": "Here is some small information about our discord. Hope you know a little bit more about us :)",
+
+                "color": 4120501,
+                "footer": {
+                    "icon_url": "https://i.imgur.com/TIDrbVI.png",
+                    "text": "Drop Zone"
+                },
+                "thumbnail": {
+                    "url": "https://i.imgur.com/TIDrbVI.png"
+                },
+
+                "fields": [
+
+                    {
+                        "name": "Wanne help us out ?",
+                        "value": "- You can give keys away as well in our Discord (contact one of our admins) \n- Run giveaway on SteamGifts for our Steam Group only.\n- Invite your friends\n- Follow us on our social medias."
+                    },
+                    {
+                        "name": "How are we gettings our keys?",
+                        "value": "- We buy keys with out own money all around the web. \n- We get keys from donation or partnering"
+                    },
+                    {
+                        "name": "Drop Zone Socials:",
+                        "value": "[Steam Group](https://steamcommunity.com/groups/Dropzone420)\n[Our Website](https://www.keylegends.com/)",
+                        "inline": true
+                    },
+                    {
+                        "name": "SilentZ420 Socials:",
+                        "value": "[Twitter](https://twitter.com/silentz420)\n[Steam](https://steamcommunity.com/id/silentz420)\n[Instagram](https://www.instagram.com/jonathan.depaepe/)\n[Twitch](https://www.twitch.tv/silentz420)",
+                        "inline": true
+                    }
+                ]
+            }
+        })
     }
 }
 

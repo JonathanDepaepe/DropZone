@@ -5,7 +5,6 @@ const {prefix} = require("./config.json")
 const ytdl = require("ytdl-core");
 const config = require("./config.json")
 const mysql = require('mysql')
-
 const queue = new Map();
 
 
@@ -85,6 +84,8 @@ function processCommand(receivedMessage) {
         endVoteCommand(receivedMessage, arguments)
     } else if (primaryCommand == "giveaway") {
         giveAway(receivedMessage)
+    } else if (primaryCommand == "levelgiveaway") {
+        levelGiveAway(receivedMessage)
     } else if (primaryCommand == "check") {
         checkCommand(receivedMessage)
     } else if (primaryCommand == "rank") {
@@ -93,10 +94,9 @@ function processCommand(receivedMessage) {
         claimCommand(receivedMessage)
     } else if (primaryCommand == "about") {
         aboutUsCommand(receivedMessage)
-    }
-    else if (primaryCommand == "banReward") {
+    } else if (primaryCommand == "banReward") {
         banRewardCommand(receivedMessage, arguments)
-    }else {
+    } else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
 }
@@ -592,7 +592,7 @@ function giveAway(message) {
 
                                                 .then(collected => {
                                                     message.channel.send("Alright all set!");
-                                                    startGiveaway(message, channelId, totalTime, totalWinners, giveawayName);
+                                                    startGiveaway(message, channelId, totalTime, totalWinners, giveawayName, false);
                                                 })
                                                 .catch(collected => {
                                                     message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
@@ -617,7 +617,7 @@ function giveAway(message) {
 
 }
 
-function startGiveaway(message, channelId, totalTime, totalWinners, giveawayName) {
+function startGiveaway(message, channelId, totalTime, totalWinners, giveawayName, level, levelInt) {
     let deadline;
     if (totalTime[1].toLowerCase() === "d") {
         deadline = new Date(Date.now() + totalTime[0] * 24 * 3600 * 1000)
@@ -630,7 +630,13 @@ function startGiveaway(message, channelId, totalTime, totalWinners, giveawayName
     } else if (totalTime[1].toLowerCase() === "s") {
         deadline = new Date(Date.now() + totalTime[0] * 1000)
     }
-    sendGiveaway(message, channelId, deadline, giveawayName, totalWinners);
+    if (!level) {
+        sendGiveaway(message, channelId, deadline, giveawayName, totalWinners);
+    } else {
+        sendLevelGiveaway(message, channelId, deadline, giveawayName, totalWinners, levelInt);
+
+    }
+
 
 }
 
@@ -673,7 +679,7 @@ function sendGiveaway(message, channelId, deadline, name, totalWinners) {
 }
 
 
-function getUsers(msg, giveaway_id) {
+function getUsers(msg, giveaway_id, isLevel) {
     const filter = (reaction, user) => reaction.emoji.id === '723120954468990996'
     msg.awaitReactions(filter, {time: 15000})
         .then(collected => addUsersToDatabase(collected.toJSON(), giveaway_id))
@@ -825,6 +831,17 @@ function checkCommand(message) {
                 let date = new Date(voting.time)
                 waitingEndVoting(message, voting.channel_id, voting.message_id, gameList, date)
 
+            }
+
+        }
+    });
+
+    con.query("SELECT * FROM levelgiveaways", function (err, result, fields) {
+        if (err) throw err;
+
+        for (let giveaway of result) {
+            if (giveaway.ended !== 1) {
+                updateLevelGiveaway(message, giveaway.id, giveaway.message_id, giveaway.channel, giveaway.name, giveaway.winners, giveaway.level)
             }
 
         }
@@ -1070,7 +1087,7 @@ function claimCommand(message) {
                 message.author.send("You don't have any rewards. If this is false please contact **@Silentz420#9436**")
             }
             message.channel.send("<:DropZone:723120954468990996> A private message has been sent to you. <@" + userId + ">")
-        }else{
+        } else {
             message.channel.send("<:DropZone:723120954468990996> A private message has been sent to you. <@" + userId + ">")
             message.author.send("You don't have any rewards. If this is false please contact **@Silentz420#9436**")
         }
@@ -1108,14 +1125,14 @@ function sendGiveawayKey(message) {
 
 }
 
-function banRewardCommand(message, argument){
-    if (message.author.id === "181799020207800323"){
+function banRewardCommand(message, argument) {
+    if (message.author.id === "181799020207800323") {
         message.channel.send("" + argument[0] + " is now banned from claiming rewards")
     }
 }
 
-function aboutUsCommand(message){
-    if (message.author.id === "181799020207800323"){
+function aboutUsCommand(message) {
+    if (message.author.id === "181799020207800323") {
         message.channel.send({
 
             "embed": {
@@ -1156,6 +1173,290 @@ function aboutUsCommand(message){
         })
     }
 }
+
+function levelGiveAway(message) {
+    const giveawayUserIdRequester = message.author.id
+    let giveawayLevel;
+    let channelId;
+    let totalTime = [];
+    let totalWinners;
+    let giveawayName;
+
+    const filterSetChannel = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("channel: " + response.content.slice(2, 20))
+            channelId = response.content.slice(2, 20);
+            return true;
+        }
+        return false;
+    };
+
+    const filterSetTime = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("time: " + response.content.slice(0, -1) + " " + response.content.slice(-1))
+            totalTime.push(response.content.slice(0, -1))
+            totalTime.push(response.content.slice(-1))
+            return true;
+        }
+        return false;
+    };
+
+    const filterSetWinners = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("winners: " + response.content)
+            totalWinners = response.content;
+            return true;
+        }
+        return false;
+    };
+
+    const filterSetName = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("name giveaway: " + response.content)
+            giveawayName = response.content;
+            return true;
+        }
+        return false;
+    };
+
+    const filterSetLevel = (response) => {
+        if (response.author.id === giveawayUserIdRequester) {
+            console.log("name giveaway: " + response.content)
+            giveawayLevel = response.content;
+            return true;
+        }
+        return false;
+    };
+
+    message.channel.send(" let's set up an giveaway! \n`Please type the name of a channel in this server.`").then(() => {
+        message.channel.awaitMessages(filterSetChannel, {max: 1, time: 120000, errors: ['time']})
+            .then(collected => {
+                message.channel.send("What will be the `The total time of the giveaway`\nEnter a duration in `S,M,H,D`").then(() => {
+                    message.channel.awaitMessages(filterSetTime, {max: 1, time: 120000, errors: ['time']})
+                        .then(collected => {
+                            message.channel.send("`Please enter a number of winners between 1 and 10.`").then(() => {
+                                message.channel.awaitMessages(filterSetWinners, {
+                                    max: 1,
+                                    time: 120000,
+                                    errors: ['time']
+                                }).then(collected => {
+                                    message.channel.send("`Please enter the level the member should be`").then(() => {
+                                        message.channel.awaitMessages(filterSetLevel, {
+                                            max: 1,
+                                            time: 120000,
+                                            errors: ['time']
+                                        })
+                                            .then(collected => {
+                                                message.channel.send("Finally,`What do you want to giveaway` ?").then(() => {
+                                                    message.channel.awaitMessages(filterSetName, {
+                                                        max: 1,
+                                                        time: 120000,
+                                                        errors: ['time']
+                                                    })
+
+                                                        .then(collected => {
+                                                            message.channel.send("Alright all set!");
+                                                            startGiveaway(message, channelId, totalTime, totalWinners, giveawayName, true, giveawayLevel);
+                                                        })
+                                                        .catch(collected => {
+                                                            message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                                        });
+                                                });
+                                            })
+                                            .catch(collected => {
+                                                message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                            });
+                                    });
+                                })
+                                    .catch(collected => {
+                                        message.channel.send("Uh! You took longer then 2 minutes to respond");
+                                    });
+                            });
+                        })
+                        .catch(collected => {
+                            message.channel.send("Uh! You took longer then 2 minutes to respond");
+                        });
+                });
+            })
+            .catch(collected => {
+                message.channel.send("Uh! You took longer then 2 minutes to respond");
+            });
+    });
+
+}
+
+function sendLevelGiveaway(message, channelId, deadline, name, totalWinners, level) {
+    const channelMessage = message.guild.channels.cache.find(channel => channel.id === channelId)
+
+    let now = new Date().getTime();
+    let t = deadline - now;
+    let days = Math.floor(t / (1000 * 60 * 60 * 24));
+    let hours = Math.floor((t % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    let minutes = Math.floor((t % (1000 * 60 * 60)) / (1000 * 60));
+    let seconds = Math.floor((t % (1000 * 60)) / 1000);
+
+    channelMessage.send({
+        "embed": {
+            "title": "" + name,
+            "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days " + hours + " hours " + minutes + " minutes " + seconds + " seconds\n Only for level " + level + "+",
+            "color": 4385012,
+            "footer": {
+                "text": "Created by " + message.author.username
+            }
+        }
+    }).then(sentEmbed => {
+        addLevelToDatabase(message, sentEmbed.id, channelId, deadline, name, totalWinners, level);
+        sentEmbed.react("723120954468990996")
+
+    })
+
+}
+
+
+function addLevelToDatabase(message, message_id, channelId, deadline, giveawayName, totalWinners, level) { //will be used later
+    let sql = "INSERT INTO levelgiveaways (channel, winners, name, time, message_id,level, ended) VALUES ('" + channelId + "', '" + totalWinners + "', '" + giveawayName + "', '" + deadline + "', '" + message_id + "','" + level + "', '" + 0 + "')";
+    con.query(sql, function (err, result) {
+        if (err) throw err;
+        let database_id = result.insertId
+        updateLevelGiveaway(message, database_id, message_id, channelId, giveawayName, totalWinners, level)
+    });
+}
+
+function updateLevelGiveaway(message, database_id, message_id, channel_id, name, totalWinners, level) {
+    let deadline = null;
+    con.query("SELECT * FROM levelgiveaways WHERE id = " + (database_id), function (err, result) {
+        if (err) throw err;
+        deadline = new Date(result[0].time)
+        console.log("deadline: " + deadline)
+    });
+
+    const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === channel_id)
+
+    let x = setInterval(function () {
+        let now = new Date().getTime();
+        let t = deadline - now;
+        let days = Math.floor(t / (1000 * 60 * 60 * 24));
+        let hours = Math.floor((t % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        let minutes = Math.floor((t % (1000 * 60 * 60)) / (1000 * 60));
+        let seconds = Math.floor((t % (1000 * 60)) / 1000);
+
+        giveawayChannel.messages.fetch(message_id)
+            .then(msg => {
+                msg.edit({
+                    "embed": {
+                        "title": "" + name,
+                        "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days " + hours + " hours " + minutes + " minutes " + seconds + " seconds\n ***__Only for level " + level + "+__***",
+                        "color": 4385012,
+                        "footer": {
+                            "text": "Created by " + message.author.username + " total winners " + totalWinners
+                        }
+                    }
+                })
+            })
+
+        giveawayChannel.messages.fetch(message_id)
+            .then(msg => getLevelUsers(msg, database_id, level))
+        if (t < 0) {
+            clearInterval(x);
+            endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinners, database_id)
+        }
+
+    }, 10000);
+
+}
+
+function endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinners, giveaway_id, level) {
+    let databaseUsers = [];
+    let winners = "";
+    let winnerNumbers = [];
+
+    con.query("UPDATE levelgiveaways SET ended = 1 WHERE message_id = " + message_id, function (err, result) {
+        if (err) throw err;
+
+    });
+
+    con.query("SELECT * FROM users WHERE giveaway_id = " + giveaway_id, function (err, result) {
+        if (err) throw console.error(err);
+
+        for (let enteredUsers of result) {
+            if (!databaseUsers.includes(enteredUsers.userid)) {
+                databaseUsers.push(enteredUsers.userid)
+            }
+        }
+
+        for (let i = 0; i < totalWinners; i++) {
+            let randomNumber = Math.floor(Math.random() * (databaseUsers.length - 2 + 1)) + 1;
+            if (!winnerNumbers.includes(randomNumber) && databaseUsers[randomNumber] !== "720631628501876799") {
+                winnerNumbers.push(randomNumber)
+                winners += " <@" + databaseUsers[randomNumber] + ">,"
+            } else {
+                i--
+            }
+        }
+
+        giveawayChannel.messages.fetch(message_id)
+            .then(msg => {
+                msg.edit({
+                    "embed": {
+                        "title": "" + name,
+                        "description": "React with <:DropZone:723120954468990996> to enter!\nWas only for level " + level + "+\n ENDED",
+                        "color": 4385012,
+                        "footer": {
+                            "text": "Created by " + message.author.username
+                        }
+                    }
+                })
+            })
+
+        giveawayChannel.send("congrats " + winners + " You won : " + name)
+        console.log("giveaways had ended id: " + giveaway_id)
+    })
+}
+
+
+function getLevelUsers(msg, giveaway_id, level) {
+    const filter = (reaction, user) => reaction.emoji.id === '723120954468990996'
+    msg.awaitReactions(filter, {time: 15000})
+        .then(collected => addLevelUsersToDatabase(collected.toJSON(), giveaway_id, level, msg))
+        .catch(console.error);
+}
+
+function addLevelUsersToDatabase(users, giveaway_id, level, message) {
+    let databaseUsers = [];
+
+    con.query("SELECT * FROM levelusers WHERE giveaway_id = " + giveaway_id, function (err, result) {
+        if (err) throw console.error(err);
+
+        for (let enteredUsers of result) {
+            if (!databaseUsers.includes(enteredUsers.userid)) {
+                databaseUsers.push(enteredUsers.userid)
+            }
+        }
+
+        if (!(users.length === 0))
+            users = users[0].users
+        for (let user of users) {
+            if (!databaseUsers.includes(user)) {
+                con.query("SELECT * FROM levels WHERE user_id = " + user, function (err, result) {
+                    if (result.length !== 0 && parseInt(result[0].level) >= level) {
+                        let sql = "INSERT INTO levelusers (userid, giveaway_id) VALUES ('" + user + "', '" + giveaway_id + "')";
+                        con.query(sql, function (err, result) {
+                            if (err) throw err;
+                            console.log("person added:" + user + "in: " + giveaway_id)
+                        })
+                    } else {
+                        message.reactions.resolve('723120954468990996').users.remove(user);
+                    }
+
+                })
+
+            }
+
+        }
+    })
+
+}
+
 
 client.login(token);
 

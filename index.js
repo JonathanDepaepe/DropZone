@@ -1358,7 +1358,7 @@ function updateLevelGiveaway(message, database_id, message_id, channel_id, name,
             .then(msg => getLevelUsers(msg, database_id, level))
         if (t < 0) {
             clearInterval(x);
-            endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinners, database_id)
+            endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinners, database_id, level)
         }
 
     }, 10000);
@@ -1375,7 +1375,7 @@ function endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinne
 
     });
 
-    con.query("SELECT * FROM users WHERE giveaway_id = " + giveaway_id, function (err, result) {
+    con.query("SELECT * FROM levelusers WHERE giveaway_id = " + giveaway_id, function (err, result) {
         if (err) throw console.error(err);
 
         for (let enteredUsers of result) {
@@ -1385,9 +1385,9 @@ function endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinne
         }
 
         for (let i = 0; i < totalWinners; i++) {
-            let randomNumber = Math.floor(Math.random() * (databaseUsers.length - 2 + 1)) + 1;
+            let randomNumber = Math.floor(Math.random() * (databaseUsers.length - 1)) + 1;
             if (!winnerNumbers.includes(randomNumber) && databaseUsers[randomNumber] !== "720631628501876799") {
-                winnerNumbers.push(randomNumber)
+                winnerNumbers.push(randomNumber);
                 winners += " <@" + databaseUsers[randomNumber] + ">,"
             } else {
                 i--
@@ -1434,7 +1434,7 @@ function addLevelUsersToDatabase(users, giveaway_id, level, message) {
         }
 
         if (!(users.length === 0))
-            users = users[0].users
+            users = users[0].users;
         for (let user of users) {
             if (!databaseUsers.includes(user)) {
                 con.query("SELECT * FROM levels WHERE user_id = " + user, function (err, result) {

@@ -1370,6 +1370,7 @@ function endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinne
     let winners = "";
     let winnerNumbers = [];
 
+
     con.query("UPDATE levelgiveaways SET ended = 1 WHERE message_id = " + message_id, function (err, result) {
         if (err) throw err;
 
@@ -1385,13 +1386,15 @@ function endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinne
         }
 
         for (let i = 0; i < totalWinners; i++) {
-            let randomNumber = Math.floor(Math.random() * (databaseUsers.length - 1)) + 1;
+            let randomNumber = Math.floor(Math.random() * (databaseUsers.length));
             if (!winnerNumbers.includes(randomNumber) && databaseUsers[randomNumber] !== "720631628501876799") {
                 winnerNumbers.push(randomNumber);
                 winners += " <@" + databaseUsers[randomNumber] + ">,"
             } else {
                 i--
             }
+            console.log(databaseUsers)
+            console.log(databaseUsers.length)
         }
 
         giveawayChannel.messages.fetch(message_id)
@@ -1444,7 +1447,7 @@ function addLevelUsersToDatabase(users, giveaway_id, level, message) {
                             if (err) throw err;
                             console.log("person added:" + user + "in: " + giveaway_id)
                         })
-                    } else {
+                    } else if (user !== "720631628501876799") {
                         message.reactions.resolve('723120954468990996').users.remove(user);
                     }
 

@@ -6,7 +6,7 @@ const ytdl = require("ytdl-core");
 const config = require("./config.json")
 const mysql = require('mysql')
 const queue = new Map();
-
+const guildInvites = new Map();
 
 let con = mysql.createConnection({
     host: "localhost",
@@ -29,6 +29,11 @@ client.once("ready", () => {
     client.user.setActivity('Keylegends.com | &help', {type: 'PLAYING'})
         .then(presence => console.log(`Activity set to ${presence.activities[0].name}`))
         .catch(console.error);
+    client.guilds.cache.forEach(guild => {
+        guild.fetchInvites()
+            .then(invites => guildInvites.set(guild.id, invites))
+            .catch(err => console.log(err));
+    });
 
 });
 
@@ -60,6 +65,8 @@ client.on("message", async message => {
         stop(message, serverQueue);
     } else if (message.content.startsWith(`${prefix}steamgifts`)) {
         steamGiftsCommand(message);
+    } else if (message.content.startsWith(`${prefix}checkLevel`)) {
+        checkLevelCommand(message);
     } else {
         processCommand(message)
     }
@@ -96,6 +103,8 @@ function processCommand(receivedMessage) {
         aboutUsCommand(receivedMessage)
     } else if (primaryCommand == "banReward") {
         banRewardCommand(receivedMessage, arguments)
+    } else if (primaryCommand == "giveawayPing") {
+        giveawayPingCommand(receivedMessage, arguments)
     } else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
@@ -479,7 +488,6 @@ function waitingEndVoting(message, channelId, messageID, gameList, endDate) {
     let x = setInterval(function () {
         let now = new Date().getTime();
         let t = endDate - now;
-        console.log(t)
         if (t < 0) {
             clearInterval(x);
             getTheMessage(message, channelId, messageID, gameList, endDate)
@@ -897,14 +905,20 @@ function addLevels(user, message) {
     let level = user[1]
     let date = user[4]
     if (t < -60000) {
-        randomXP = Math.floor(Math.random() * Math.floor(config.maxXP)) + 1;
+        if (config.doubleXP === true) {
+            randomXP = (Math.floor(Math.random() * Math.floor(config.maxXP)) + 1) * 2;
+        } else {
+            randomXP = Math.floor(Math.random() * Math.floor(config.maxXP)) + 1;
+        }
+
         newTotalXp = (parseInt(user[3]) + randomXP).toString()
         if (newTotalXp > calculatingLevel(parseInt(user[1]) + 1)) {
             level = (parseInt(level) + 1).toString()
             const levelChannel = message.guild.channels.cache.find(channel => channel.id === config.levelMessageChannel);
             levelChannel.send("<@" + user[0] + ">, You are now level " + level + "!")
-            checkLevel(user, level, message)
+
         }
+        checkLevel(user[0], level, message)
         date = new Date()
     }
     con.query("UPDATE levels SET level = " + level + ", totalMessages = " + totalMessages + ", totalXp = " + newTotalXp + ", lastMessage = '" + date + "'  WHERE user_id = " + user[0], function (err, result) {
@@ -913,10 +927,16 @@ function addLevels(user, message) {
     });
 }
 
-function checkLevel(user, level, message) {
-    if (level === "5") {
-        const role = message.guild.roles.cache.find(role => role.name === "Bronze")
-        message.member.roles.add(role)
+function checkLevel(userId, level, message) {
+    const bronze = message.guild.roles.cache.find(role => role.name === "Bronze")
+    const silver = message.guild.roles.cache.find(role => role.name === "Silver")
+    if (level === "5" && !message.member.roles.cache.find(r => r.name === "Bronze")) {
+        message.member.roles.add(bronze)
+    } else if (level === "10" && !message.member.roles.cache.find(r => r.name === "Silver")) {
+        if (message.member.roles.cache.find(r => r.name === "Bronze")) {
+            message.member.roles.remove(bronze)
+        }
+        message.member.roles.add(silver)
     }
 
 }
@@ -942,19 +962,23 @@ function rankCommand(message) {
     let argument = message.content.slice(6)
     let usedArgument = false;
     if (argument.length !== 0) {
+        console.log('here1')
         usedArgument = true;
         if (argument.includes("<@")) {
+            console.log('here12')
             userId = argument.slice(3, 21)
             name = message.mentions.users.first().username
         } else if (argument.includes("#")) {
+            console.log('here13')
             let slitted = argument.split('#')
             let discordUser = client.users.cache.find(user => user.username === slitted[0])
             userId = discordUser.id
             name = discordUser.username
-        } else if (typeof argument == 'number') {
+        } else if (typeof argument.slice(0, 17) === 'number') {
             userId = argument
             let discordUser = client.users.cache.find(user => user.id === userId)
             name = discordUser.username
+            console.log('here')
         }
 
     } else {
@@ -1104,8 +1128,8 @@ function sendGiveawayKey(message) {
             gameName += splitCommand[i] + ' '
         }
         let date = new Date()
-        const giveawayChannel = client.users.cache.find(channel => channel.id === userId);
-        giveawayChannel.send({
+        const userPrivateChat = client.users.cache.find(userChat => userChat.id === userId);
+        userPrivateChat.send({
             "embed": {
                 "title": "GiveAway",
                 "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your key:** ```" + key + " | " + gameName + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
@@ -1458,6 +1482,45 @@ function addLevelUsersToDatabase(users, giveaway_id, level, message) {
         }
     })
 
+
+}
+
+
+client.on('guildMemberAdd', (member) => updateMembers(member))
+client.on('inviteCreate', async invite => guildInvites.set(invite.guild.id, await invite.guild.fetchInvites()));
+
+async function updateMembers(member) {
+    const cachedInvites = guildInvites.get(member.guild.id);
+    const newInvites = await member.guild.fetchInvites();
+    guildInvites.set(member.guild.id, newInvites);
+
+    try {
+        const usedInvite = newInvites.find(inv => cachedInvites.get(inv.code).uses < inv.uses);
+        console.log(cachedInvites)
+        const welcomeChannel = member.guild.channels.cache.find(channel => channel.id === config.joinMessagesChannel);
+        welcomeChannel.send(`Welcome <@${member.user.id}> And thanks for inviting ${usedInvite.inviter.tag}! (${usedInvite.uses} invites)`)
+    } catch (err) {
+        console.log(err);
+    }
+
+}
+
+
+function giveawayPingCommand(message, argument) {
+    if (message.author.id === config.admin) {
+        message.channel.send({
+            "embed": {
+                "title": "Giveaway Ping",
+                "description": "React with <:DropZone:723120954468990996> to receive giveaway pings!",
+                "color": 4385012,
+                "footer": {
+                    "text": "Giveaway Ping for <#770969865015263232>"
+                }
+            }
+        }).then(sentEmbed => {
+            sentEmbed.react("723120954468990996")
+        })
+    }
 }
 
 

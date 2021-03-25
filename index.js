@@ -2,8 +2,8 @@ const Discord = require('discord.js');
 const client = new Discord.Client();
 const {token} = require("./auth.json");
 const {prefix} = require("./config.json")
-const ytdl = require("ytdl-core");
 const config = require("./config.json")
+const authSolutions = require('./auth.js');
 const mysql = require('mysql')
 const queue = new Map();
 const guildInvites = new Map();
@@ -26,7 +26,7 @@ con.connect(function (err) {
 
 client.once("ready", () => {
     console.log('Bot ready!');
-    client.user.setActivity('Keylegends.com | &help', {type: 'PLAYING'})
+    client.user.setActivity('&help', {type: 'PLAYING'})
         .then(presence => console.log(`Activity set to ${presence.activities[0].name}`))
         .catch(console.error);
     client.guilds.cache.forEach(guild => {
@@ -50,23 +50,21 @@ client.on("message", async message => {
     if (message.content.startsWith(`${prefix}sendKey`)) {
         sendGiveawayKey(message);
     }
+    if (message.content.startsWith(`${prefix}addKey`)) {
+        addClaimKey(message);
+    }
+
+    if (message.content.startsWith(`${prefix}keydrop`)) {
+        keyDropCommand(message);
+    }
 
     if (message.guild === null) return;
     levelMessage(message);
     if (!message.content.startsWith(prefix)) return;
 
     const serverQueue = queue.get(message.guild.id);
-
-    if (message.content.startsWith(`${prefix}play`)) {
-        execute(message, serverQueue);
-    } else if (message.content.startsWith(`${prefix}skip`)) {
-        skip(message, serverQueue);
-    } else if (message.content.startsWith(`${prefix}stop`)) {
-        stop(message, serverQueue);
-    } else if (message.content.startsWith(`${prefix}steamgifts`)) {
+    if (message.content.startsWith(`${prefix}steamgifts`)) {
         steamGiftsCommand(message);
-    } else if (message.content.startsWith(`${prefix}checkLevel`)) {
-        checkLevelCommand(message);
     } else {
         processCommand(message)
     }
@@ -84,13 +82,12 @@ function processCommand(receivedMessage) {
 
     if (primaryCommand == "help") {
         helpCommand(arguments, receivedMessage)
-    }
-    if (primaryCommand == "voting") {
+    } else if (primaryCommand == "voting") {
         voting(receivedMessage, arguments[0])
-    } else if (primaryCommand == "endvoting") {
-        endVoteCommand(receivedMessage, arguments)
     } else if (primaryCommand == "giveaway") {
         giveAway(receivedMessage)
+    } else if (primaryCommand == "keydrop") {
+        keyDropCommand(receivedMessage)
     } else if (primaryCommand == "levelgiveaway") {
         levelGiveAway(receivedMessage)
     } else if (primaryCommand == "check") {
@@ -105,133 +102,39 @@ function processCommand(receivedMessage) {
         banRewardCommand(receivedMessage, arguments)
     } else if (primaryCommand == "giveawayPing") {
         giveawayPingCommand(receivedMessage, arguments)
+    } else if (primaryCommand == "auth") {
+        authCommand(receivedMessage, arguments)
     } else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
 }
 
 
-async function execute(message, serverQueue) {
-    message.delete()
-    const args = message.content.split(" ");
-
-    const voiceChannel = message.member.voice.channel;
-    if (!voiceChannel)
-        return message.channel.send(
-            "You need to be in a voice channel to play music!"
-        );
-    const permissions = voiceChannel.permissionsFor(message.client.user);
-    if (!permissions.has("CONNECT") || !permissions.has("SPEAK")) {
-        return message.channel.send(
-            "I need the permissions to join and speak in your voice channel!"
-        );
-    }
-
-    const songInfo = await ytdl.getInfo(args[1]);
-    const songId = await ytdl.getVideoID(args[1]);
-    const song = {
-        title: songInfo.title,
-        url: songInfo.video_url,
-        thumbnail: songId,
-        requested: message.author.username
-    };
-
-    if (!serverQueue) {
-        const queueContruct = {
-            textChannel: message.channel,
-            voiceChannel: voiceChannel,
-            connection: null,
-            songs: [],
-            volume: 5,
-            playing: true
-        };
-
-        queue.set(message.guild.id, queueContruct);
-
-        queueContruct.songs.push(song);
-
-        try {
-            var connection = await voiceChannel.join();
-            queueContruct.connection = connection;
-            play(message.guild, queueContruct.songs[0]);
-        } catch (err) {
-            console.log(err);
-            queue.delete(message.guild.id);
-            return message.channel.send(err);
-        }
-    } else {
-        serverQueue.songs.push(song);
-        return message.channel.send(`Added to queue: **${song.title}**`);
-    }
-}
-
-function skip(message, serverQueue) {
-    message.delete()
-    if (!message.member.voice.channel)
-        return message.channel.send(
-            "You have to be in a voice channel to stop the music!"
-        );
-    if (!serverQueue)
-        return message.channel.send("There is no song that I could skip!");
-    serverQueue.connection.dispatcher.end();
-    return message.channel.send(`Skipped by: **${message.member}**`);
-}
-
-function stop(message, serverQueue) {
-    message.delete()
-    if (!message.member.voice.channel)
-        return message.channel.send(
-            "You have to be in a voice channel to stop the music!"
-        );
-    serverQueue.songs = [];
-    serverQueue.connection.dispatcher.end();
-}
-
-function play(guild, song) {
-    const serverQueue = queue.get(guild.id);
-    if (!song) {
-        serverQueue.voiceChannel.leave();
-        queue.delete(guild.id);
-        return;
-    }
-
-    const dispatcher = serverQueue.connection
-        .play(ytdl(song.url))
-        .on("finish", () => {
-            serverQueue.songs.shift();
-            play(guild, serverQueue.songs[0]);
-        })
-        .on("error", error => console.error(error));
-    dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
-    serverQueue.textChannel.send({
-        "embed": {
-            "title": "**Now Playing**",
-            "description": "[" + song.title + "]" + "(" + song.url + ")",
-            "color": 4385012,
-            "footer": {
-                "text": "Requested by " + song.requested
-            },
-            "thumbnail": {
-                "url": "https://img.youtube.com/vi/" + song.thumbnail + "/maxresdefault.jpg"
-            }
-        }
-    });
-
-}
-
 function helpCommand(arguments, receivedMessage) {
     receivedMessage.delete()
-    let botembed = new Discord.MessageEmbed()
+    receivedMessage.channel.send({
 
-        .setDescription("Commands")
-        .setColor("#42e8f4")
-        .addField("Music", "&play, &skip, &stop")
-        .addField("leveling", "&rank, &claim")
-        .setFooter("requested by " + receivedMessage.author.username)
-        .setTimestamp();
+        "embed": {
 
-    receivedMessage.channel.send(botembed)
+            "description": "\n`&claim`\n Claim your game keys, check #rules for checken when you can\n\n`&rank`\n Check your level, how much xp you got and need\n\n`&giveaway`\n Create a giveaways, Only for members with role Giveaway creator. Ask an admin or creator for this rank!\n\n`&levelGiveaway`\n Create a level giveaways, Only for members with role Giveaway creator. Ask an admin or creator for this rank!\n\n More commands will be added soon...",
+            "url": "https://discordapp.com",
+            "color": 2385569,
+            "timestamp": "2021-03-23T23:12:03.874Z",
+            "footer": {
+
+                "text": "" + receivedMessage.author.username
+            },
+            "thumbnail": {
+                "url": "https://i.imgur.com/TIDrbVI.png"
+            },
+
+            "author": {
+                "name": "Drop Zone Commands"
+            }
+        }
+    })
 }
+
 
 function steamGiftsCommand(message) {
     const giveawayUserIdRequester = message.author.id;
@@ -1023,8 +926,11 @@ function rankCommand(message) {
 
 function claimCommand(message) {
     let steamKey = ""
-    let userId = message.author.id
+    let userId = message.author.id;
     let date = new Date();
+    let winnerNumbers = [];
+
+
     con.query("SELECT * FROM levels WHERE user_id = " + userId, function (err, result) {
         if (err) throw console.error(err);
         if (result[0] !== undefined) {
@@ -1038,10 +944,18 @@ function claimCommand(message) {
                             if (err) throw err;
 
                         });
+                        for (let i = 0; i < 3; i++) {
+                            let randomNumber = Math.floor(Math.random() * (result1.length));
+                            if (!winnerNumbers.includes(randomNumber)) {
+                                winnerNumbers.push(randomNumber);
+                            } else {
+                                i--
+                            }
+                        }
 
                         for (let i = 0; i < 3; i++) {
-                            steamKey += "\n" + result1[i].gameName + " | " + result1[i].gameKey
-                            con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[i].id, function (err, result) {
+                            steamKey += "\n" + result1[winnerNumbers[i]].gameName + " | " + result1[winnerNumbers[i]].gameKey
+                            con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[winnerNumbers[i]].id, function (err, result) {
                                 if (err) throw err;
 
                             });
@@ -1064,13 +978,14 @@ function claimCommand(message) {
                             }
                         })
                     } else {
-                        message.author.send("It looks like we are out of stuck. Please contact **@Silentz420#9436**")
+                        message.author.send("It looks like we are out of stock. Please contact **@Silentz420#9436**")
                     }
                 })
             } else if (config.claimInvites[result[0].claimedInvites] <= result[0].invites) {
                 con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
                     if (err) throw console.error(err);
                     if (result1.length >= 3) {
+                        console.log(result1.length)
 
                         let newClaimedNumber = result[0].claimedInvites + 1;
                         con.query("UPDATE levels SET claimedInvites = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
@@ -1079,6 +994,7 @@ function claimCommand(message) {
                         });
 
                         for (let i = 0; i < 3; i++) {
+
                             steamKey += "\n" + result1[i].gameName + " | " + result1[i].gameKey
                             con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[i].id, function (err, result) {
                                 if (err) throw err;
@@ -1103,7 +1019,7 @@ function claimCommand(message) {
                             }
                         })
                     } else {
-                        message.author.send("It looks like we are out of stuck. Please contact **@Silentz420#9436**")
+                        message.author.send("It looks like we are out of stock. Please contact **@Silentz420#9436**")
                     }
                 })
 
@@ -1148,6 +1064,24 @@ function sendGiveawayKey(message) {
 
 
 }
+
+function addClaimKey(message) {
+    let splitCommand = message.content.split(" ")
+    let key = splitCommand[1]
+
+    for (let i = 2; splitCommand.length > i; i++) {
+        gameName += splitCommand[i] + ' '
+    }
+
+    let sql = "INSERT INTO games (gameName, gameKey) VALUES ('" + gameName + "', '" + key + "')";
+    con.query(sql, function (err, result) {
+        if (err) throw err;
+    })
+
+
+    message.author.send('Key has been added to the database. Thanks for the submission!')
+}
+
 
 function banRewardCommand(message, argument) {
     if (message.author.id === "181799020207800323") {
@@ -1521,6 +1455,142 @@ function giveawayPingCommand(message, argument) {
             sentEmbed.react("723120954468990996")
         })
     }
+}
+
+
+/*TODO De aantal "totalkeys", line 1526
+
+function keyDropCommand(message, argument) {
+    message.channel.send("A private message has been send, Please follow the instructions there.")
+
+    let totalKeys;
+    let keys = [];
+    let authentication = true;
+    let channelId;
+
+    const filterSetChannel = (response) => {
+        if (response.author.id === message.author.id) {
+            console.log("channel: " + response.content.slice(2, 20))
+            channelId = response.content.slice(2, 20);
+            return true;
+        }
+        return false;
+    };
+
+    const filterTotalKeys = (response) => {
+        if (response.author.id === message.author.id) {
+            totalKeys = response.content
+            return true;
+        }
+        return false;
+    };
+
+    const filterKeys = (response) => {
+        if (response.author.id === message.author.id) {
+            let splitCommand = message.content.split(" ")
+            let gameName = '';
+            for (let i = 2; splitCommand.length > i; i++) {
+                gameName += splitCommand[i] + ' '
+            }
+            keys.push(splitCommand[1])
+            keys.push(gameName)
+            return true;
+        }
+        return false;
+    };
+
+    const filterAuth = (response) => {
+        if (response.author.id === message.author.id) {
+            if (response.content === "no" || response.content === "n") {
+                authentication = false
+            }
+
+            return true;
+
+        }
+        return false;
+    };
+
+
+    message.channel.send(" let's set up an giveaway! \n`Please response with the channel id`").then(() => {
+        message.channel.awaitMessages(filterSetChannel, {max: 1, time: 120000, errors: ['time']})
+            .then(collected => {
+                message.channel.send("Do you want authentication when they claim. \n`Please response (y)es or (n)o`").then(() => {
+                    message.channel.awaitMessages(filterAuth, {max: 1, time: 120000, errors: ['time']})
+                        .then(collected => {
+                            message.channel.send("`Please enter a number of keys you want to giveaway!`").then(() => {
+                                message.channel.awaitMessages(filterTotalKeys, {
+                                    max: 1,
+                                    time: 120000,
+                                    errors: ['time']
+                                }).then(collected => {
+                                    let i = 0
+                                    while (i < totalKeys){
+                                        message.channel.send("Finally,`What do you want to giveaway` ?").then(() => {
+                                            message.channel.awaitMessages(filterKeys, {
+                                                max: 1,
+                                                time: 120000,
+                                                errors: ['time']
+                                            })
+                                        });
+                                        i++;
+                                    }
+
+                                })
+                                    .catch(collected => {
+                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                    });
+
+                            });
+                        })
+                        .catch(collected => {
+                            message.channel.send("Uh! You took longer then 2 minutes to respond");
+                        });
+                });
+            })
+            .catch(collected => {
+                message.channel.send("Uh! You took longer then 2 minutes to respond");
+            });
+    });
+
+
+}
+*/
+
+function authCommand(message, argument) {
+    const randomNumber = (Math.floor(Math.random() * 1500) + 1).toString();
+    const solution = authSolutions[randomNumber - 1];
+    let answer;
+
+    const filterItemName = (response) => {
+        if (response.author.id === config.admin && response.content.length > 2) {
+            answer = response.content;
+            return true;
+        }
+        return false;
+    };
+
+    message.channel.send('Type the auth as fast as you can', {files: ["auth/" + randomNumber + ".jpeg"]})
+        .then(() => {
+            message.channel.awaitMessages(filterItemName, {
+                max: 1,
+                time: 30000,
+                errors: ['time']
+            })
+                .then(collected => {
+                    console.log(solution)
+                    console.log(answer)
+                    if (solution === answer) {
+                        message.channel.send("Great! Do &claim to see what you have won! <:DropZone:723120954468990996>");
+
+                    } else {
+                        message.channel.send("Nooooo, What happened? Better luck next time. If the answer was right let us know!")
+                    }
+                })
+                .catch(collected => {
+                    message.channel.send("Uh! You took longer then 30 seconds to respond <:7686_pepecross:723871890015256596>");
+                });
+        });
 }
 
 

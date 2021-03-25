@@ -1,5 +1,5 @@
 {
-  "prefix": "&",
+  "prefix": ")",
   "steamGifts": "720569016824889345",
   "giveAway": "466692261602656257",
   "admin": "181799020207800323",
@@ -9,6 +9,6 @@
   "claimLevels": [5,10,15,20,25,30,35],
   "claimInvites": [5,10,20,30,40],
   "lengthOfDaysVoting": 1,
-  "levelMessageChannel": "572132742578569222",
+  "levelMessageChannel": "402425273246679042",
   "joinMessagesChannel": "402148992437321728"
 }

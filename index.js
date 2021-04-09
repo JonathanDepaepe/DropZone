@@ -7,6 +7,9 @@ const authSolutions = require('./auth.js');
 const mysql = require('mysql')
 const queue = new Map();
 const guildInvites = new Map();
+exports.client = client;
+
+const dailyGiveaway = require("./dailygiveaway")
 
 let con = mysql.createConnection({
     host: "localhost",
@@ -23,10 +26,11 @@ con.connect(function (err) {
     console.log("Database connected!");
 });
 
+module.exports
 
 client.once("ready", () => {
     console.log('Bot ready!');
-    client.user.setActivity('&help', {type: 'PLAYING'})
+    client.user.setActivity('Drop Zone | &help', {type: 'WATCHING'})
         .then(presence => console.log(`Activity set to ${presence.activities[0].name}`))
         .catch(console.error);
     client.guilds.cache.forEach(guild => {
@@ -52,6 +56,10 @@ client.on("message", async message => {
     }
     if (message.content.startsWith(`${prefix}addKey`)) {
         addClaimKey(message);
+    }
+
+    if (message.content.startsWith(`${prefix}addDaily`)) {
+        dailyGiveaway.addKeyDailyDatabase(message);
     }
 
     if (message.content.startsWith(`${prefix}keydrop`)) {
@@ -104,7 +112,9 @@ function processCommand(receivedMessage) {
         giveawayPingCommand(receivedMessage, arguments)
     } else if (primaryCommand == "auth") {
         authCommand(receivedMessage, arguments)
-    } else {
+    } else if (primaryCommand == "startDaily") {
+        dailyGiveaway.startDailyCommand(receivedMessage)
+    }else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
 }
@@ -555,7 +565,7 @@ function addToDatabase(message, message_id, channelId, deadline, giveawayName, t
     let sql = "INSERT INTO giveaways (channel, winners, name, time, message_id, ended) VALUES ('" + channelId + "', '" + totalWinners + "', '" + giveawayName + "', '" + deadline + "', '" + message_id + "', '" + 0 + "')";
     con.query(sql, function (err, result) {
         if (err) throw err;
-        console.log("GiveAway id Added:" + result.insertId);
+        console.log("GiveAway id Added:" + result.insertIdinsertId);
         updateGiveaway(message, result.insertId, message_id, channelId, giveawayName, totalWinners)
     });
 
@@ -929,109 +939,115 @@ function claimCommand(message) {
     let userId = message.author.id;
     let date = new Date();
     let winnerNumbers = [];
+    let winnerGames = []
+    let claimEnabled = false;
 
+    if (claimEnabled) {
+        con.query("SELECT * FROM levels WHERE user_id = " + userId, function (err, result) {
+            if (err) throw console.error(err);
+            if (result[0] !== undefined) {
+                if (config.claimLevels[result[0].claimed] <= result[0].level) {
+                    con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
+                        if (err) throw console.error(err);
+                        if (result1.length >= 3) {
 
-    con.query("SELECT * FROM levels WHERE user_id = " + userId, function (err, result) {
-        if (err) throw console.error(err);
-        if (result[0] !== undefined) {
-            if (config.claimLevels[result[0].claimed] <= result[0].level) {
-                con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
-                    if (err) throw console.error(err);
-                    if (result1.length >= 3) {
-
-                        let newClaimedNumber = result[0].claimed + 1;
-                        con.query("UPDATE levels SET claimed = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
-                            if (err) throw err;
-
-                        });
-                        for (let i = 0; i < 3; i++) {
-                            let randomNumber = Math.floor(Math.random() * (result1.length));
-                            if (!winnerNumbers.includes(randomNumber)) {
-                                winnerNumbers.push(randomNumber);
-                            } else {
-                                i--
-                            }
-                        }
-
-                        for (let i = 0; i < 3; i++) {
-                            steamKey += "\n" + result1[winnerNumbers[i]].gameName + " | " + result1[winnerNumbers[i]].gameKey
-                            con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[winnerNumbers[i]].id, function (err, result) {
+                            let newClaimedNumber = result[0].claimed + 1;
+                            con.query("UPDATE levels SET claimed = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
                                 if (err) throw err;
 
                             });
-                        }
-
-
-                        message.author.send({
-                            "embed": {
-                                "title": "Level Reward",
-                                "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your keys:** ```" + steamKey + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
-                                "color": 254714,
-                                "timestamp": "" + date,
-                                "footer": {
-                                    "icon_url": "https://i.imgur.com/A4OSs19.jpg",
-                                    "text": "SilentZ420"
-                                },
-                                "thumbnail": {
-                                    "url": "https://i.imgur.com/TIDrbVI.png"
+                            for (let i = 0; i < 3; i++) {
+                                let randomNumber = Math.floor(Math.random() * (result1.length));
+                                if (!winnerNumbers.includes(randomNumber) && !winnerGames.includes(result1[randomNumber].gameName)) {
+                                    winnerGames.push(result1[randomNumber].gameName)
+                                    winnerNumbers.push(randomNumber);
+                                } else {
+                                    i--
                                 }
                             }
-                        })
-                    } else {
-                        message.author.send("It looks like we are out of stock. Please contact **@Silentz420#9436**")
-                    }
-                })
-            } else if (config.claimInvites[result[0].claimedInvites] <= result[0].invites) {
-                con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
-                    if (err) throw console.error(err);
-                    if (result1.length >= 3) {
-                        console.log(result1.length)
 
-                        let newClaimedNumber = result[0].claimedInvites + 1;
-                        con.query("UPDATE levels SET claimedInvites = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
-                            if (err) throw err;
+                            for (let i = 0; i < 3; i++) {
+                                steamKey += "\n" + result1[winnerNumbers[i]].gameName + " | " + result1[winnerNumbers[i]].gameKey
+                                con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[winnerNumbers[i]].id, function (err, result) {
+                                    if (err) throw err;
 
-                        });
+                                });
+                            }
 
-                        for (let i = 0; i < 3; i++) {
 
-                            steamKey += "\n" + result1[i].gameName + " | " + result1[i].gameKey
-                            con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[i].id, function (err, result) {
+                            message.author.send({
+                                "embed": {
+                                    "title": "Level Reward",
+                                    "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your keys:** ```" + steamKey + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
+                                    "color": 254714,
+                                    "timestamp": "" + date,
+                                    "footer": {
+                                        "icon_url": "https://i.imgur.com/A4OSs19.jpg",
+                                        "text": "SilentZ420"
+                                    },
+                                    "thumbnail": {
+                                        "url": "https://i.imgur.com/TIDrbVI.png"
+                                    }
+                                }
+                            })
+                        } else {
+                            message.author.send("It looks like we are out of stock. Please contact **@Silentz420#9436**")
+                        }
+                    })
+                } else if (config.claimInvites[result[0].claimedInvites] <= result[0].invites) {
+                    con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
+                        if (err) throw console.error(err);
+                        if (result1.length >= 3) {
+                            console.log(result1.length)
+
+                            let newClaimedNumber = result[0].claimedInvites + 1;
+                            con.query("UPDATE levels SET claimedInvites = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
                                 if (err) throw err;
 
                             });
-                        }
-                        console.log("user: " + message.author.id + " claimed " + steamKey)
 
-                        message.author.send({
-                            "embed": {
-                                "title": "Level Reward",
-                                "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your keys:** ```" + steamKey + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
-                                "color": 254714,
-                                "timestamp": "" + date,
-                                "footer": {
-                                    "icon_url": "https://i.imgur.com/A4OSs19.jpg",
-                                    "text": "SilentZ420"
-                                },
-                                "thumbnail": {
-                                    "url": "https://i.imgur.com/TIDrbVI.png"
-                                }
+                            for (let i = 0; i < 3; i++) {
+
+                                steamKey += "\n" + result1[i].gameName + " | " + result1[i].gameKey
+                                con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[i].id, function (err, result) {
+                                    if (err) throw err;
+
+                                });
                             }
-                        })
-                    } else {
-                        message.author.send("It looks like we are out of stock. Please contact **@Silentz420#9436**")
-                    }
-                })
+                            console.log("user: " + message.author.id + " claimed " + steamKey)
 
+                            message.author.send({
+                                "embed": {
+                                    "title": "Level Reward",
+                                    "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your keys:** ```" + steamKey + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
+                                    "color": 254714,
+                                    "timestamp": "" + date,
+                                    "footer": {
+                                        "icon_url": "https://i.imgur.com/A4OSs19.jpg",
+                                        "text": "SilentZ420"
+                                    },
+                                    "thumbnail": {
+                                        "url": "https://i.imgur.com/TIDrbVI.png"
+                                    }
+                                }
+                            })
+                        } else {
+                            message.author.send("It looks like we are out of stock. Please contact **@Silentz420#9436**")
+                        }
+                    })
+
+                } else {
+                    message.author.send("You don't have any rewards. If this is false please contact **@Silentz420#9436**")
+                }
+                message.channel.send("<:DropZone:723120954468990996> A private message has been sent to you. <@" + userId + ">")
             } else {
+                message.channel.send("<:DropZone:723120954468990996> A private message has been sent to you. <@" + userId + ">")
                 message.author.send("You don't have any rewards. If this is false please contact **@Silentz420#9436**")
             }
-            message.channel.send("<:DropZone:723120954468990996> A private message has been sent to you. <@" + userId + ">")
-        } else {
-            message.channel.send("<:DropZone:723120954468990996> A private message has been sent to you. <@" + userId + ">")
-            message.author.send("You don't have any rewards. If this is false please contact **@Silentz420#9436**")
-        }
-    })
+        })
+    } else {
+        message.channel.send("Claims are temporarily disabled :pensive:")
+    }
 }
 
 function sendGiveawayKey(message) {
@@ -1066,8 +1082,9 @@ function sendGiveawayKey(message) {
 }
 
 function addClaimKey(message) {
-    let splitCommand = message.content.split(" ")
-    let key = splitCommand[1]
+    let splitCommand = message.content.split(" ");
+    let gameName = '';
+    let key = splitCommand[1];
 
     for (let i = 2; splitCommand.length > i; i++) {
         gameName += splitCommand[i] + ' '
@@ -1458,28 +1475,19 @@ function giveawayPingCommand(message, argument) {
 }
 
 
-/*TODO De aantal "totalkeys", line 1526
-
+/*TODO De aantal "totalkeys", line 1526 shift enter a new key
+*/
 function keyDropCommand(message, argument) {
-    message.channel.send("A private message has been send, Please follow the instructions there.")
-
     let totalKeys;
     let keys = [];
     let authentication = true;
     let channelId;
+    let keyListMessage = "";
+    let keyConfirmed = true;
 
     const filterSetChannel = (response) => {
         if (response.author.id === message.author.id) {
-            console.log("channel: " + response.content.slice(2, 20))
-            channelId = response.content.slice(2, 20);
-            return true;
-        }
-        return false;
-    };
-
-    const filterTotalKeys = (response) => {
-        if (response.author.id === message.author.id) {
-            totalKeys = response.content
+            channelId = response.content
             return true;
         }
         return false;
@@ -1487,13 +1495,17 @@ function keyDropCommand(message, argument) {
 
     const filterKeys = (response) => {
         if (response.author.id === message.author.id) {
-            let splitCommand = message.content.split(" ")
-            let gameName = '';
-            for (let i = 2; splitCommand.length > i; i++) {
-                gameName += splitCommand[i] + ' '
+            let lines = response.content.split("\n")
+            for (let i = 0; lines.length > i; i++) {
+                let splitCommand = lines[i].split(" ")
+                let gameName = '';
+                for (let i = 1; splitCommand.length > i; i++) {
+                    gameName += splitCommand[i] + ' '
+                }
+                keyListMessage += "`key: " + splitCommand[0] + " Game Name: " + gameName + "`\n"
+                keys.push(splitCommand[0])
+                keys.push(gameName)
             }
-            keys.push(splitCommand[1])
-            keys.push(gameName)
             return true;
         }
         return false;
@@ -1512,35 +1524,50 @@ function keyDropCommand(message, argument) {
     };
 
 
-    message.channel.send(" let's set up an giveaway! \n`Please response with the channel id`").then(() => {
+    const filterKeyConfirmed = (response) => {
+        if (response.author.id === message.author.id) {
+            if (response.content === "no" || response.content === "n") {
+                message.channel.send("Please redo the command and try to find out what went wrong, If you dont find any errors on your side contact SilentZ! ")
+                keyConfirmed = false;
+                return true;
+            }
+            return true;
+        }
+        return false;
+    };
+
+    message.channel.send(" let's set up an Key drops! \n`Please response with the channel id`").then(() => {
         message.channel.awaitMessages(filterSetChannel, {max: 1, time: 120000, errors: ['time']})
             .then(collected => {
                 message.channel.send("Do you want authentication when they claim. \n`Please response (y)es or (n)o`").then(() => {
                     message.channel.awaitMessages(filterAuth, {max: 1, time: 120000, errors: ['time']})
                         .then(collected => {
-                            message.channel.send("`Please enter a number of keys you want to giveaway!`").then(() => {
-                                message.channel.awaitMessages(filterTotalKeys, {
+                            message.channel.send("Please enter all the keys that you want to giveaway! \n By typing it like this: \n`1111-1111-1111-1111 Fallout 4\n2222-2222-2222-2222 Rainbow Six Siege`\n \n the key has to be completely attached to each other!").then(() => {
+                                message.channel.awaitMessages(filterKeys, {
                                     max: 1,
                                     time: 120000,
                                     errors: ['time']
                                 }).then(collected => {
-                                    let i = 0
-                                    while (i < totalKeys){
-                                        message.channel.send("Finally,`What do you want to giveaway` ?").then(() => {
-                                            message.channel.awaitMessages(filterKeys, {
-                                                max: 1,
-                                                time: 120000,
-                                                errors: ['time']
-                                            })
-                                        });
-                                        i++;
-                                    }
+                                    message.channel.send("Is the key list right ?. \n`Please response (y)es or (n)o`\n" + keyListMessage).then(() => {
+                                        message.channel.awaitMessages(filterKeyConfirmed, {
+                                            max: 1,
+                                            time: 120000,
+                                            errors: ['time']
+                                        })
 
+                                            .then(collected => {
+                                                message.channel.send("Alright all set!");
+                                                startKeyDrop(message, channelId, totalKeys, keys, authentication, keyConfirmed);
+                                            })
+                                            .catch(collected => {
+                                                message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
+                                            });
+
+                                    });
                                 })
                                     .catch(collected => {
                                         message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
                                     });
-
                             });
                         })
                         .catch(collected => {
@@ -1551,11 +1578,52 @@ function keyDropCommand(message, argument) {
             .catch(collected => {
                 message.channel.send("Uh! You took longer then 2 minutes to respond");
             });
-    });
-
-
+    })
 }
-*/
+
+function startKeyDrop(message, channelId, keys, auth, keyConfirmed) {
+    let date = new Date()
+  if (keyConfirmed){
+      const channelMessage = client.channels.cache.find(channel => channel.id === channelId)
+      channelMessage.send({
+              "content": "<:DropZone:723120954468990996> :tada:  **KEY DROP !!** :tada: <:DropZone:723120954468990996>",
+              "embed": {
+                  "description": "React with <:DropZone:723120954468990996> and follow the instruction in private messages !\n Auth: Enabled\n Keys Claimed: 0/5",
+                  "color": 4385012,
+                  "timestamp": "" + date,
+                  "footer": {
+                      "icon_url": "" + message.author.avatarURL(),
+                      "text": "Created by " + message.author.username
+                  }
+              }
+          }
+      ).then(sentEmbed => {
+          sentEmbed.react("723120954468990996")
+          sendMessage(channelMessage,sentEmbed.id)
+      })
+  }
+}
+
+function sendMessage(channel ,message_id) {
+    console.log("here")
+    let x = setInterval(function () {
+    channel.messages.fetch(message_id).then(msg => function () {
+    console.log('herhere')
+    const filter = (reaction, user) => reaction.emoji.id === '723120954468990996'
+    msg.awaitReactions(filter, {time: 15000})
+        .then(collect =>function () {console.log(collect)})
+        .catch(console.error);
+    })
+
+        if (message_id === false) {
+            clearInterval(x);
+            console.log("herenot")
+        }
+
+    }, 1000);
+}
+
+
 
 function authCommand(message, argument) {
     const randomNumber = (Math.floor(Math.random() * 1500) + 1).toString();

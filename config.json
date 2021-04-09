@@ -10,5 +10,7 @@
   "claimInvites": [5,10,20,30,40],
   "lengthOfDaysVoting": 1,
   "levelMessageChannel": "402425273246679042",
-  "joinMessagesChannel": "402148992437321728"
+  "joinMessagesChannel": "402148992437321728",
+  "creators": [131067894200008704,181799020207800323],
+  "dailyGiveawayChannel" : "477145011029409801"
 }

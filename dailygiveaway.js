@@ -7,6 +7,8 @@ const steam = new SteamAPI('75BD7BC81C6A6AC657375A9517353A8F');
 const clientExport = require("./index.js")
 const client = clientExport.client
 
+let dailyGiveaway = false;
+
 function addKeyDailyDatabase(message) {
     const giveawayUserIdRequester = message.author.id;
 
@@ -58,16 +60,14 @@ function startDailyCommand(message) {
 }
 
 
-function startDaily(){
+function startDaily() {
     database.getDailyGames((err, keys) => {
-        if (keys.length > 0){
+        if (keys.length > 0) {
             let steamAppId = keys[0].link.split("/")
-            console.log(steamAppId[4])
             steam.getGameDetails(steamAppId[4]).then(result => {
                 const dailyChannel = client.channels.cache.find(channel => channel.id === config.dailyGiveawayChannel);
-                let date = new Date;
-                console.log(result)
-                dailyChannel.send({
+                let date = new Date(Date.now() + 86400000); //86.400.000ms --> 1D/24H
+                dailyChannel.send({"content": " :tada: **Daily Giveaway!** :tada:",
                     "embed": {
                         "title": "" + result.name,
                         "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + 24 + " hours " + 0 + " minutes " + 0 + " seconds",
@@ -82,7 +82,7 @@ function startDaily(){
                         }
                     }
                 }).then(sentEmbed => {
-                    update(message, sentEmbed.id, channelId, deadline, name, totalWinners);
+                    updateDaily(date, dailyChannel,keys,result ,sentEmbed.id);
                     sentEmbed.react("723120954468990996")
                 })
             })
@@ -92,7 +92,7 @@ function startDaily(){
 }
 
 
-function updateDaily(date, channel, keys, steamInfo, messageId){
+function updateDaily(date, channel, keys, steamInfo, messageId) {
 
     let x = setInterval(function () {
         let now = new Date().getTime();
@@ -104,7 +104,7 @@ function updateDaily(date, channel, keys, steamInfo, messageId){
         channel.messages.fetch(messageId)
             .then(msg => {
                 msg.edit({
-                    "embed": {
+                    "embed": {"content": " :tada: **Daily Giveaway!** :tada:",
                         "title": "" + steamInfo.name,
                         "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + hours + " hours " + minutes + " minutes " + seconds + " seconds",
                         "url": "" + keys[0].link,
@@ -120,27 +120,26 @@ function updateDaily(date, channel, keys, steamInfo, messageId){
                 })
             })
         channel.messages.fetch(messageId)
-            .then(msg => getDailyUsers(msg, keys))
+            .then(msg => getDailyReactionsUsers(msg, keys))
         if (t < 0) {
             clearInterval(x);
-            endGiveaway(message, giveawayChannel, message_id, name, totalWinners, database_id)
+            endGiveaway(messageId, keys, date, steamInfo, channel)
         }
 
     }, 10000);
 
 }
 
-function getDailyUsers(msg, keys) {
-    const filter = (reaction, user) => reaction.emoji.id === '723120954468990996'
-    msg.awaitReactions(filter, {time: 15000})
+function getDailyReactionsUsers(msg, keys) {
+    msg.awaitReactions((reaction) => reaction.emoji.id === '723120954468990996',  {time: 10000})
         .then(collected => addUsersToDatabase(collected.toJSON(), keys))
         .catch(console.error);
 }
 
-function addUsersToDatabase(users, keys) {
+function addUsersToDatabase(messageData, keys) {
     let databaseUsers = [];
-
-    database.getDailyUsers(keys[0].id,(err, users) => {
+    let messageUsers = [];
+    database.getDailyUsers(keys[0].id, (err, users) => {
         if (err) throw console.error(err);
 
         for (let enteredUsers of users) {
@@ -148,11 +147,11 @@ function addUsersToDatabase(users, keys) {
                 databaseUsers.push(enteredUsers.userID)
             }
         }
-        if (!(users.length === 0))
-            users = users[0].users
-        for (let user of users) {
+        if (!(messageData.length === 0))
+            messageUsers = messageData[0].users
+        for (let user of messageUsers) {
             if (!databaseUsers.includes(user)) {
-                database.addUserDaily(keys[0].id, user);
+                database.addUserDaily(user,keys[0].id);
             }
 
         }
@@ -160,61 +159,105 @@ function addUsersToDatabase(users, keys) {
 }
 
 
-function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, giveaway_id) {
+function endGiveaway(messageId, keys, date, steamInfo, channel) {
     let databaseUsers = [];
-    let winners = "";
-    let winnerNumbers = [];
+    let winnerId, winnerTag;
 
-    con.query("UPDATE giveaways SET ended = 1 WHERE message_id = " + message_id, function (err, result) {
-        if (err) throw err;
 
-    });
+    database.setDailyEnded(keys[0].id)
+    database.getDailyUsers(keys[0].id, (err, users) => {
 
-    con.query("SELECT * FROM users WHERE giveaway_id = " + giveaway_id, function (err, result) {
-        if (err) throw console.error(err);
-
-        for (let enteredUsers of result) {
-            if (!databaseUsers.includes(enteredUsers.userid)) {
-                databaseUsers.push(enteredUsers.userid)
+        for (let enteredUsers of users) {
+            if (!databaseUsers.includes(enteredUsers.userID)) {
+                databaseUsers.push(enteredUsers.userID)
             }
         }
 
 
-        for (let i = 0; i < totalWinners; i++) {
+        for (let i = 0; i < 1; i++) {
             let randomNumber = Math.floor(Math.random() * (databaseUsers.length - 2 + 1)) + 1;
-            if (!winnerNumbers.includes(randomNumber) && databaseUsers[randomNumber] !== "720631628501876799") {
-                winnerNumbers.push(randomNumber)
-                winners += " <@" + databaseUsers[randomNumber] + ">,"
+            if (databaseUsers[randomNumber] !== "720631628501876799") {
+                winnerId = databaseUsers[randomNumber];
+                winnerTag = " <@" + databaseUsers[randomNumber] + ">,";
             } else {
                 i--
             }
         }
 
 
-        giveawayChannel.messages.fetch(message_id)
+        channel.messages.fetch(messageId)
             .then(msg => {
                 msg.edit({
                     "embed": {
-                        "title": "" + name,
+                        "title": "" + steamInfo.name,
                         "description": "React with <:DropZone:723120954468990996> to enter!\n ENDED",
-                        "color": 4385012,
+                        "url": "" + keys[0].link,
+                        "color": 10761782,
+                        "timestamp": "ends " + date,
                         "footer": {
-                            "text": "Created by " + message.author.username
+                            "text": "Created by " + keys[0].username
+                        },
+                        "image": {
+                            "url": "" + steamInfo.header_image
                         }
                     }
                 })
             })
 
-        giveawayChannel.send("congrats " + winners + " You won : " + name)
-        console.log("giveaways had ended id: " + giveaway_id)
+        channel.send("congrats " + winnerTag + " You won : " + steamInfo.name)
+        sendKeyToWinner(keys, winnerId, steamInfo, date);
+        if (dailyGiveaway){
+            startDaily();
+        }
     })
 }
 
 
+function sendKeyToWinner(keys, winnerId, steamInfo, date){
+    const userPrivateChat = client.users.cache.find(userChat => userChat.id === winnerId);
+    userPrivateChat.send({
+        "embed": {
+            "title": "GiveAway",
+            "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your key:** ```" + keys[0].key + " | " + steamInfo.name + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
+            "color": 254714,
+            "timestamp": "" + date,
+            "footer": {
+                "icon_url": "https://i.imgur.com/A4OSs19.jpg",
+                "text": "SilentZ420"
+            },
+            "thumbnail": {
+                "url": "https://i.imgur.com/TIDrbVI.png"
+            }
+        }
+    })
+}
 
+function disableDailyCommand(message){
+    if (config.creators.includes(parseInt(message.author.id))) {
+        dailyGiveaway = false;
+        message.channel.send("Daily giveaways has been disabled, Use &enableDaily to activate it back!")
+    }
+}
+
+function enableDailyCommand(message){
+    if (config.creators.includes(parseInt(message.author.id))) {
+        dailyGiveaway = true;
+        message.channel.send("Daily giveaways has been enabled, Use &disableDaily to disable it!")
+    }
+}
+
+function stockDailyCommand(message){
+    database.getDailyGames((err, keys) => {
+        console.log(keys)
+        message.channel.send("There is a total of " + keys.length + " in stock")
+    })
+}
 
 module.exports = {
     addKeyDailyDatabase,
-    startDailyCommand
+    startDailyCommand,
+    disableDailyCommand,
+    enableDailyCommand,
+    stockDailyCommand
 }
 

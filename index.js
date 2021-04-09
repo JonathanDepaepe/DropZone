@@ -8,6 +8,7 @@ const mysql = require('mysql')
 const queue = new Map();
 const guildInvites = new Map();
 exports.client = client;
+const database = require("./database/MySqlConnection")
 
 const dailyGiveaway = require("./dailygiveaway")
 
@@ -15,7 +16,7 @@ let con = mysql.createConnection({
     host: "localhost",
     user: "root",
     password: "",
-    port: "3306",
+    port: "3305",
     database: "discord",
     connectionLimit: 10
 })
@@ -54,7 +55,7 @@ client.on("message", async message => {
     if (message.content.startsWith(`${prefix}sendKey`)) {
         sendGiveawayKey(message);
     }
-    if (message.content.startsWith(`${prefix}addKey`)) {
+    if (message.content.startsWith(`${prefix}addClaim`)) {
         addClaimKey(message);
     }
 
@@ -62,15 +63,25 @@ client.on("message", async message => {
         dailyGiveaway.addKeyDailyDatabase(message);
     }
 
-    if (message.content.startsWith(`${prefix}keydrop`)) {
+    if (message.content.startsWith(`${prefix}keyDrop`)) {
         keyDropCommand(message);
+    }
+
+    if (message.content.startsWith(`${prefix}stockClaim`)) {
+        stockClaimCommand(message);
+    }
+
+    if (message.content.startsWith(`${prefix}adminHelp`)) {
+        adminHelpCommand(message);
+    }
+
+    if (message.content.startsWith(`${prefix}stockDaily`)) {
+        dailyGiveaway.stockDailyCommand(message);
     }
 
     if (message.guild === null) return;
     levelMessage(message);
     if (!message.content.startsWith(prefix)) return;
-
-    const serverQueue = queue.get(message.guild.id);
     if (message.content.startsWith(`${prefix}steamgifts`)) {
         steamGiftsCommand(message);
     } else {
@@ -114,6 +125,10 @@ function processCommand(receivedMessage) {
         authCommand(receivedMessage, arguments)
     } else if (primaryCommand == "startDaily") {
         dailyGiveaway.startDailyCommand(receivedMessage)
+    } else if (primaryCommand == "disableDaily") {
+        dailyGiveaway.disableDailyCommand(receivedMessage)
+    } else if (primaryCommand == "enableDaily") {
+        dailyGiveaway.enableDailyCommand(receivedMessage)
     }else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
@@ -1659,6 +1674,36 @@ function authCommand(message, argument) {
                     message.channel.send("Uh! You took longer then 30 seconds to respond <:7686_pepecross:723871890015256596>");
                 });
         });
+}
+
+function stockClaimCommand(message){
+    database.getClaimKeys((err, keys) => {
+        console.log(keys)
+        message.channel.send("There is a total of " + keys.length + " in stock")
+    })
+
+}
+
+function adminHelpCommand(message){
+    let date = new Date();
+    message.channel.send({"embed": {
+            "description": "\n`&sendKey`\n Send a key to a user with the bot overlay, `&sendKey DiscordUserID SteamKey Steam name`\n\n`&addClaim`\n Add a claim key to the bots database `&addClaim SteamKey Steam Name`\n\n`&stockClaim`\n Check The stock of the claims\n\n`&addDaily`\n Add a daily key to the bots database by following the instructions\n\n`&stockDaily`\n Check The stock of the daily giveaways\n\n`&keyDrop`\n Follow the instructions and start a key drop! \n\n More commands will be added soon...",
+            "color": 2385569,
+            "timestamp": "" + date,
+            "footer": {
+
+                "text": "" + message.author.username
+            },
+            "thumbnail": {
+                "url": "https://i.imgur.com/TIDrbVI.png"
+            },
+
+            "author": {
+                "name": "Drop Zone Commands"
+            }
+        }
+    })
+
 }
 
 

@@ -4,30 +4,10 @@ const {token} = require("./auth.json");
 const {prefix} = require("./config.json")
 const config = require("./config.json")
 const authSolutions = require('./auth.js');
-const mysql = require('mysql')
-const queue = new Map();
 const guildInvites = new Map();
 exports.client = client;
 const database = require("./database/MySqlConnection")
-
 const dailyGiveaway = require("./dailygiveaway")
-
-let con = mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: "",
-    port: "3305",
-    database: "discord",
-    connectionLimit: 10
-})
-
-
-con.connect(function (err) {
-    if (err) throw err;
-    console.log("Database connected!");
-});
-
-module.exports
 
 client.once("ready", () => {
     console.log('Bot ready!');
@@ -129,7 +109,7 @@ function processCommand(receivedMessage) {
         dailyGiveaway.disableDailyCommand(receivedMessage)
     } else if (primaryCommand == "enableDaily") {
         dailyGiveaway.enableDailyCommand(receivedMessage)
-    }else {
+    } else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
 }
@@ -397,11 +377,9 @@ function sendVoting(message, gameList, channelId) {
 }
 
 function addVotingToDatabase(message, channelId, message_id, gameList, endDate) {
-    let sql = "INSERT INTO votings (channel_id, message_id, gameName1, url1, gameName2, url2, gameName3, url3, gameName4, url4, time) VALUES ('" + channelId + "', '" + message_id + "', '" + gameList[0] + "', '" + gameList[1] + "', '" + gameList[2] + "', '" + gameList[3] + "', '" + gameList[4] + "', '" + gameList[5] + "', '" + gameList[6] + "', '" + gameList[7] + "', '" + endDate + "')";
-    con.query(sql, function (err, result) {
-        if (err) throw err;
+    database.addVoting(channelId, message_id, gameList[0], gameList[1], gameList[2], gameList[3], gameList[4], gameList[5], gameList[6], gameList[7], endDate).then(result => {
         waitingEndVoting(message, channelId, message_id, gameList, endDate)
-    });
+    })
 }
 
 
@@ -437,10 +415,7 @@ function countVotes(message, messageID, gameList, date, element) {
 
     }
 
-    con.query("UPDATE votings SET ended = 1 WHERE message_id = " + messageID, function (err, result) {
-        if (err) throw err;
-
-    });
+    database.updateVotingByMessageID(messageID)
 
     message.messages.fetch(messageID)
         .then(msg => {
@@ -576,15 +551,10 @@ function startGiveaway(message, channelId, totalTime, totalWinners, giveawayName
 
 }
 
-function addToDatabase(message, message_id, channelId, deadline, giveawayName, totalWinners) { //will be used later
-    let sql = "INSERT INTO giveaways (channel, winners, name, time, message_id, ended) VALUES ('" + channelId + "', '" + totalWinners + "', '" + giveawayName + "', '" + deadline + "', '" + message_id + "', '" + 0 + "')";
-    con.query(sql, function (err, result) {
-        if (err) throw err;
-        console.log("GiveAway id Added:" + result.insertIdinsertId);
-        updateGiveaway(message, result.insertId, message_id, channelId, giveawayName, totalWinners)
+function addToDatabase(message, message_id, channelId, deadline, giveawayName, totalWinners) {
+    database.addGiveaway(channelId, totalWinners, giveawayName, deadline, message_id, 0, (err, result) => {
+        updateGiveaway(message, result.insertId, message_id, channelId, giveawayName, totalWinners);
     });
-
-
 }
 
 function sendGiveaway(message, channelId, deadline, name, totalWinners) {
@@ -615,7 +585,7 @@ function sendGiveaway(message, channelId, deadline, name, totalWinners) {
 }
 
 
-function getUsers(msg, giveaway_id, isLevel) {
+function getUsers(msg, giveaway_id) {
     const filter = (reaction, user) => reaction.emoji.id === '723120954468990996'
     msg.awaitReactions(filter, {time: 15000})
         .then(collected => addUsersToDatabase(collected.toJSON(), giveaway_id))
@@ -625,8 +595,7 @@ function getUsers(msg, giveaway_id, isLevel) {
 function addUsersToDatabase(users, giveaway_id) {
     let databaseUsers = [];
 
-    con.query("SELECT * FROM users WHERE giveaway_id = " + giveaway_id, function (err, result) {
-        if (err) throw console.error(err);
+    database.getUsersByGiveawayID(giveaway_id, (err, result) => {
 
         for (let enteredUsers of result) {
             if (!databaseUsers.includes(enteredUsers.userid)) {
@@ -638,13 +607,9 @@ function addUsersToDatabase(users, giveaway_id) {
             users = users[0].users
         for (let user of users) {
             if (!databaseUsers.includes(user)) {
-                let sql = "INSERT INTO users (userid, giveaway_id) VALUES ('" + user + "', '" + giveaway_id + "')";
-                con.query(sql, function (err, result) {
-                    if (err) throw err;
+                database.addUser(user, giveaway_id, (err, result) => {
                     console.log("person added:" + user + "in: " + giveaway_id)
                 })
-
-
             }
 
         }
@@ -655,47 +620,43 @@ function addUsersToDatabase(users, giveaway_id) {
 
 function updateGiveaway(message, database_id, message_id, channel_id, name, totalWinners) {
 
-
     let deadline = null;
-    con.query("SELECT * FROM giveaways WHERE id = " + database_id, function (err, result) {
-        if (err) throw err;
+    database.getGiveawayById(database_id, (err, result) => {
         deadline = new Date(result[0].time)
         console.log("deadline: " + deadline)
-    });
 
-    const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === channel_id)
+        const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === channel_id)
 
+        let x = setInterval(function () {
+            let now = new Date().getTime();
+            let t = deadline - now;
+            let days = Math.floor(t / (1000 * 60 * 60 * 24));
+            let hours = Math.floor((t % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            let minutes = Math.floor((t % (1000 * 60 * 60)) / (1000 * 60));
+            let seconds = Math.floor((t % (1000 * 60)) / 1000);
 
-    let x = setInterval(function () {
-        let now = new Date().getTime();
-        let t = deadline - now;
-        let days = Math.floor(t / (1000 * 60 * 60 * 24));
-        let hours = Math.floor((t % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        let minutes = Math.floor((t % (1000 * 60 * 60)) / (1000 * 60));
-        let seconds = Math.floor((t % (1000 * 60)) / 1000);
-
-        giveawayChannel.messages.fetch(message_id)
-            .then(msg => {
-                msg.edit({
-                    "embed": {
-                        "title": "" + name,
-                        "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days " + hours + " hours " + minutes + " minutes " + seconds + " seconds",
-                        "color": 4385012,
-                        "footer": {
-                            "text": "Created by " + message.author.username + " total winners " + totalWinners
+            giveawayChannel.messages.fetch(message_id)
+                .then(msg => {
+                    msg.edit({
+                        "embed": {
+                            "title": "" + name,
+                            "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + days + " days " + hours + " hours " + minutes + " minutes " + seconds + " seconds",
+                            "color": 4385012,
+                            "footer": {
+                                "text": "Created by " + message.author.username + " total winners " + totalWinners
+                            }
                         }
-                    }
+                    })
                 })
-            })
-        giveawayChannel.messages.fetch(message_id)
-            .then(msg => getUsers(msg, database_id))
-        if (t < 0) {
-            clearInterval(x);
-            endGiveaway(message, giveawayChannel, message_id, name, totalWinners, database_id)
-        }
+            giveawayChannel.messages.fetch(message_id)
+                .then(msg => getUsers(msg, database_id))
+            if (t < 0) {
+                clearInterval(x);
+                endGiveaway(message, giveawayChannel, message_id, name, totalWinners, database_id)
+            }
 
-    }, 10000);
-
+        }, 10000);
+    });
 }
 
 
@@ -703,21 +664,14 @@ function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, g
     let databaseUsers = [];
     let winners = "";
     let winnerNumbers = [];
-
-    con.query("UPDATE giveaways SET ended = 1 WHERE message_id = " + message_id, function (err, result) {
-        if (err) throw err;
-
-    });
-
-    con.query("SELECT * FROM users WHERE giveaway_id = " + giveaway_id, function (err, result) {
-        if (err) throw console.error(err);
+    database.updateGiveawayToEnded(message_id);
+    database.getUsersByGiveawayID(giveaway_id, (err, result) => {
 
         for (let enteredUsers of result) {
             if (!databaseUsers.includes(enteredUsers.userid)) {
                 databaseUsers.push(enteredUsers.userid)
             }
         }
-
 
         for (let i = 0; i < totalWinners; i++) {
             let randomNumber = Math.floor(Math.random() * (databaseUsers.length - 2 + 1)) + 1;
@@ -728,7 +682,6 @@ function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, g
                 i--
             }
         }
-
 
         giveawayChannel.messages.fetch(message_id)
             .then(msg => {
@@ -750,43 +703,29 @@ function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, g
 }
 
 function checkCommand(message) {
-    con.query("SELECT * FROM votings", function (err, result, fields) {
-        if (err) throw err;
-
+    database.getVoting((err, result) => {
         for (let voting of result) {
-            if (voting.ended === 0) {
-                let gameList = [];
-                gameList.push(voting.gameName1)
-                gameList.push(voting.url1)
-                gameList.push(voting.gameName2)
-                gameList.push(voting.url2)
-                gameList.push(voting.gameName3)
-                gameList.push(voting.url3)
-                gameList.push(voting.gameName4)
-                gameList.push(voting.url4)
-                let date = new Date(voting.time)
-                waitingEndVoting(message, voting.channel_id, voting.message_id, gameList, date)
-
-            }
-
+            let gameList = [];
+            gameList.push(voting.gameName1)
+            gameList.push(voting.url1)
+            gameList.push(voting.gameName2)
+            gameList.push(voting.url2)
+            gameList.push(voting.gameName3)
+            gameList.push(voting.url3)
+            gameList.push(voting.gameName4)
+            gameList.push(voting.url4)
+            let date = new Date(voting.time)
+            waitingEndVoting(message, voting.channel_id, voting.message_id, gameList, date)
         }
     });
 
-    con.query("SELECT * FROM levelgiveaways", function (err, result, fields) {
-        if (err) throw err;
-
+    database.getLevelGiveaways((err, result) => {
         for (let giveaway of result) {
-            if (giveaway.ended !== 1) {
-                updateLevelGiveaway(message, giveaway.id, giveaway.message_id, giveaway.channel, giveaway.name, giveaway.winners, giveaway.level)
-            }
-
+            updateLevelGiveaway(message, giveaway.id, giveaway.message_id, giveaway.channel, giveaway.name, giveaway.winners, giveaway.level)
         }
     });
 
-
-    con.query("SELECT * FROM giveaways", function (err, result, fields) {
-        if (err) throw err;
-
+    database.getGiveaways((err, result) => {
         for (let giveaway of result) {
             if (giveaway.ended !== 1) {
                 updateGiveaway(message, giveaway.id, giveaway.message_id, giveaway.channel, giveaway.name, giveaway.winners)
@@ -801,9 +740,7 @@ function levelMessage(message) {
     let userExists = false;
     let content = message.content
     if (!content.includes("&rank") && !content.includes("&claim")) {
-        con.query("SELECT * FROM levels", function (err, result) {
-            if (err) throw console.error(err);
-
+        database.getLevels((err, result) => {
             for (let enteredUsers of result) {
                 if (message.author.id === enteredUsers.user_id) {
                     userExists = true;
@@ -817,7 +754,8 @@ function levelMessage(message) {
                 }
             }
             if (!userExists) {
-                addNewLevelUser(message.author.id);
+                let date = new Date()
+                database.addLevelUser(message.author.id, date);
             }
         })
     }
@@ -849,10 +787,7 @@ function addLevels(user, message) {
         checkLevel(user[0], level, message)
         date = new Date()
     }
-    con.query("UPDATE levels SET level = " + level + ", totalMessages = " + totalMessages + ", totalXp = " + newTotalXp + ", lastMessage = '" + date + "'  WHERE user_id = " + user[0], function (err, result) {
-        if (err) throw err;
-
-    });
+    database.updateLevel(level, totalMessages, newTotalXp, date, user[0]);
 }
 
 function checkLevel(userId, level, message) {
@@ -873,15 +808,6 @@ function calculatingLevel(x) {
     let pow = Math.pow(2, (x - 1) / 7)
     let res = ((x - 1) * 300 * pow) / 4;
     return res;
-}
-
-function addNewLevelUser(userId) {
-    let date = new Date()
-    let sql = "INSERT INTO levels (user_id, level, totalMessages, totalXp, lastMessage) VALUES ('" + userId + "', '" + "1" + "', '" + "1" + "', '" + "2" + "', '" + date + "')";
-    con.query(sql, function (err, result) {
-        if (err) throw err;
-    })
-
 }
 
 function rankCommand(message) {
@@ -914,16 +840,12 @@ function rankCommand(message) {
         userId = message.author.id
     }
 
-    let user = [];
     let date = new Date();
     let userExists = false;
-    con.query("SELECT * FROM levels", function (err, result) {
-        if (err) throw console.error(err);
-
+    database.getLevels((err,result) => {
         for (let enteredUsers of result) {
             if (userId === enteredUsers.user_id) {
                 userExists = true;
-
                 let xpToGo = Math.round(calculatingLevel(parseInt(enteredUsers.level) + 1))
                 message.channel.send({
                     "embed": {
@@ -958,19 +880,14 @@ function claimCommand(message) {
     let claimEnabled = false;
 
     if (claimEnabled) {
-        con.query("SELECT * FROM levels WHERE user_id = " + userId, function (err, result) {
-            if (err) throw console.error(err);
+
+        database.getLevelUserByUserID(userId, (err, result) => {
             if (result[0] !== undefined) {
                 if (config.claimLevels[result[0].claimed] <= result[0].level) {
-                    con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
-                        if (err) throw console.error(err);
+                    database.getGames((err, result1) => {
                         if (result1.length >= 3) {
-
                             let newClaimedNumber = result[0].claimed + 1;
-                            con.query("UPDATE levels SET claimed = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
-                                if (err) throw err;
-
-                            });
+                            database.updateLevelUserClaimed(newClaimedNumber, userId)
                             for (let i = 0; i < 3; i++) {
                                 let randomNumber = Math.floor(Math.random() * (result1.length));
                                 if (!winnerNumbers.includes(randomNumber) && !winnerGames.includes(result1[randomNumber].gameName)) {
@@ -982,13 +899,9 @@ function claimCommand(message) {
                             }
 
                             for (let i = 0; i < 3; i++) {
-                                steamKey += "\n" + result1[winnerNumbers[i]].gameName + " | " + result1[winnerNumbers[i]].gameKey
-                                con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[winnerNumbers[i]].id, function (err, result) {
-                                    if (err) throw err;
-
-                                });
+                                steamKey += "\n" + result1[winnerNumbers[i]].gameName + " | " + result1[winnerNumbers[i]].gameKey;
+                                database.updateGamesToClaimed(result1[winnerNumbers[i]].id);
                             }
-
 
                             message.author.send({
                                 "embed": {
@@ -1010,24 +923,15 @@ function claimCommand(message) {
                         }
                     })
                 } else if (config.claimInvites[result[0].claimedInvites] <= result[0].invites) {
-                    con.query("SELECT * FROM games WHERE claimed = 0", function (err, result1) {
-                        if (err) throw console.error(err);
+                    database.getGames((err, result1) => {
                         if (result1.length >= 3) {
                             console.log(result1.length)
 
                             let newClaimedNumber = result[0].claimedInvites + 1;
-                            con.query("UPDATE levels SET claimedInvites = " + newClaimedNumber + " WHERE user_id = " + userId, function (err, result) {
-                                if (err) throw err;
-
-                            });
-
+                            database.updateLevelUserLevelClaimed(newClaimedNumber);
                             for (let i = 0; i < 3; i++) {
-
                                 steamKey += "\n" + result1[i].gameName + " | " + result1[i].gameKey
-                                con.query("UPDATE games SET claimed = 1 WHERE id = " + result1[i].id, function (err, result) {
-                                    if (err) throw err;
-
-                                });
+                                database.updateGamesToClaimed(result1[winnerNumbers[i]].id);
                             }
                             console.log("user: " + message.author.id + " claimed " + steamKey)
 
@@ -1104,13 +1008,7 @@ function addClaimKey(message) {
     for (let i = 2; splitCommand.length > i; i++) {
         gameName += splitCommand[i] + ' '
     }
-
-    let sql = "INSERT INTO games (gameName, gameKey) VALUES ('" + gameName + "', '" + key + "')";
-    con.query(sql, function (err, result) {
-        if (err) throw err;
-    })
-
-
+    database.addClaimKey(gameName, key);
     message.author.send('Key has been added to the database. Thanks for the submission!')
 }
 
@@ -1303,10 +1201,9 @@ function sendLevelGiveaway(message, channelId, deadline, name, totalWinners, lev
 }
 
 
-function addLevelToDatabase(message, message_id, channelId, deadline, giveawayName, totalWinners, level) { //will be used later
-    let sql = "INSERT INTO levelgiveaways (channel, winners, name, time, message_id,level, ended) VALUES ('" + channelId + "', '" + totalWinners + "', '" + giveawayName + "', '" + deadline + "', '" + message_id + "','" + level + "', '" + 0 + "')";
-    con.query(sql, function (err, result) {
-        if (err) throw err;
+function addLevelToDatabase(message, message_id, channelId, deadline, giveawayName, totalWinners, level) {
+
+    database.addLevelGiveaway(channelId, totalWinners, giveawayName, deadline, message_id, level, (err, result) => {
         let database_id = result.insertId
         updateLevelGiveaway(message, database_id, message_id, channelId, giveawayName, totalWinners, level)
     });
@@ -1314,8 +1211,7 @@ function addLevelToDatabase(message, message_id, channelId, deadline, giveawayNa
 
 function updateLevelGiveaway(message, database_id, message_id, channel_id, name, totalWinners, level) {
     let deadline = null;
-    con.query("SELECT * FROM levelgiveaways WHERE id = " + (database_id), function (err, result) {
-        if (err) throw err;
+    database.getLevelGiveawaysByID(database_id, (err, result) => {
         deadline = new Date(result[0].time)
         console.log("deadline: " + deadline)
     });
@@ -1360,14 +1256,8 @@ function endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinne
     let winners = "";
     let winnerNumbers = [];
 
-
-    con.query("UPDATE levelgiveaways SET ended = 1 WHERE message_id = " + message_id, function (err, result) {
-        if (err) throw err;
-
-    });
-
-    con.query("SELECT * FROM levelusers WHERE giveaway_id = " + giveaway_id, function (err, result) {
-        if (err) throw console.error(err);
+    database.updateLevelGiveawayToEnded(message_id);
+    database.getLevelGiveawaysByID(giveaway_id, (err, result)=> {
 
         for (let enteredUsers of result) {
             if (!databaseUsers.includes(enteredUsers.userid)) {
@@ -1417,9 +1307,7 @@ function getLevelUsers(msg, giveaway_id, level) {
 function addLevelUsersToDatabase(users, giveaway_id, level, message) {
     let databaseUsers = [];
 
-    con.query("SELECT * FROM levelusers WHERE giveaway_id = " + giveaway_id, function (err, result) {
-        if (err) throw console.error(err);
-
+    database.getLevelUserByID(giveaway_id, (err, result) => {
         for (let enteredUsers of result) {
             if (!databaseUsers.includes(enteredUsers.userid)) {
                 databaseUsers.push(enteredUsers.userid)
@@ -1430,13 +1318,9 @@ function addLevelUsersToDatabase(users, giveaway_id, level, message) {
             users = users[0].users;
         for (let user of users) {
             if (!databaseUsers.includes(user)) {
-                con.query("SELECT * FROM levels WHERE user_id = " + user, function (err, result) {
+                database.getLevelUserByUserID(user, (err, result) => {
                     if (result.length !== 0 && parseInt(result[0].level) >= level) {
-                        let sql = "INSERT INTO levelusers (userid, giveaway_id) VALUES ('" + user + "', '" + giveaway_id + "')";
-                        con.query(sql, function (err, result) {
-                            if (err) throw err;
-                            console.log("person added:" + user + "in: " + giveaway_id)
-                        })
+                        database.addGiveawayLevelUser(user, giveaway_id);
                     } else if (user !== "720631628501876799") {
                         message.reactions.resolve('723120954468990996').users.remove(user);
                     }
@@ -1448,26 +1332,6 @@ function addLevelUsersToDatabase(users, giveaway_id, level, message) {
         }
     })
 
-
-}
-
-
-client.on('guildMemberAdd', (member) => updateMembers(member))
-client.on('inviteCreate', async invite => guildInvites.set(invite.guild.id, await invite.guild.fetchInvites()));
-
-async function updateMembers(member) {
-    const cachedInvites = guildInvites.get(member.guild.id);
-    const newInvites = await member.guild.fetchInvites();
-    guildInvites.set(member.guild.id, newInvites);
-
-    try {
-        const usedInvite = newInvites.find(inv => cachedInvites.get(inv.code).uses < inv.uses);
-        console.log(cachedInvites)
-        const welcomeChannel = member.guild.channels.cache.find(channel => channel.id === config.joinMessagesChannel);
-        welcomeChannel.send(`Welcome <@${member.user.id}> And thanks for inviting ${usedInvite.inviter.tag}! (${usedInvite.uses} invites)`)
-    } catch (err) {
-        console.log(err);
-    }
 
 }
 
@@ -1598,37 +1462,39 @@ function keyDropCommand(message, argument) {
 
 function startKeyDrop(message, channelId, keys, auth, keyConfirmed) {
     let date = new Date()
-  if (keyConfirmed){
-      const channelMessage = client.channels.cache.find(channel => channel.id === channelId)
-      channelMessage.send({
-              "content": "<:DropZone:723120954468990996> :tada:  **KEY DROP !!** :tada: <:DropZone:723120954468990996>",
-              "embed": {
-                  "description": "React with <:DropZone:723120954468990996> and follow the instruction in private messages !\n Auth: Enabled\n Keys Claimed: 0/5",
-                  "color": 4385012,
-                  "timestamp": "" + date,
-                  "footer": {
-                      "icon_url": "" + message.author.avatarURL(),
-                      "text": "Created by " + message.author.username
-                  }
-              }
-          }
-      ).then(sentEmbed => {
-          sentEmbed.react("723120954468990996")
-          sendMessage(channelMessage,sentEmbed.id)
-      })
-  }
+    if (keyConfirmed) {
+        const channelMessage = client.channels.cache.find(channel => channel.id === channelId)
+        channelMessage.send({
+                "content": "<:DropZone:723120954468990996> :tada:  **KEY DROP !!** :tada: <:DropZone:723120954468990996>",
+                "embed": {
+                    "description": "React with <:DropZone:723120954468990996> and follow the instruction in private messages !\n Auth: Enabled\n Keys Claimed: 0/5",
+                    "color": 4385012,
+                    "timestamp": "" + date,
+                    "footer": {
+                        "icon_url": "" + message.author.avatarURL(),
+                        "text": "Created by " + message.author.username
+                    }
+                }
+            }
+        ).then(sentEmbed => {
+            sentEmbed.react("723120954468990996")
+            sendMessage(channelMessage, sentEmbed.id)
+        })
+    }
 }
 
-function sendMessage(channel ,message_id) {
+function sendMessage(channel, message_id) {
     console.log("here")
     let x = setInterval(function () {
-    channel.messages.fetch(message_id).then(msg => function () {
-    console.log('herhere')
-    const filter = (reaction, user) => reaction.emoji.id === '723120954468990996'
-    msg.awaitReactions(filter, {time: 15000})
-        .then(collect =>function () {console.log(collect)})
-        .catch(console.error);
-    })
+        channel.messages.fetch(message_id).then(msg => function () {
+            console.log('herhere')
+            const filter = (reaction, user) => reaction.emoji.id === '723120954468990996'
+            msg.awaitReactions(filter, {time: 15000})
+                .then(collect => function () {
+                    console.log(collect)
+                })
+                .catch(console.error);
+        })
 
         if (message_id === false) {
             clearInterval(x);
@@ -1637,7 +1503,6 @@ function sendMessage(channel ,message_id) {
 
     }, 1000);
 }
-
 
 
 function authCommand(message, argument) {
@@ -1676,7 +1541,7 @@ function authCommand(message, argument) {
         });
 }
 
-function stockClaimCommand(message){
+function stockClaimCommand(message) {
     database.getClaimKeys((err, keys) => {
         console.log(keys)
         message.channel.send("There is a total of " + keys.length + " in stock")
@@ -1684,9 +1549,10 @@ function stockClaimCommand(message){
 
 }
 
-function adminHelpCommand(message){
+function adminHelpCommand(message) {
     let date = new Date();
-    message.channel.send({"embed": {
+    message.channel.send({
+        "embed": {
             "description": "\n`&sendKey`\n Send a key to a user with the bot overlay, `&sendKey DiscordUserID SteamKey Steam name`\n\n`&addClaim`\n Add a claim key to the bots database `&addClaim SteamKey Steam Name`\n\n`&stockClaim`\n Check The stock of the claims\n\n`&addDaily`\n Add a daily key to the bots database by following the instructions\n\n`&stockDaily`\n Check The stock of the daily giveaways\n\n`&keyDrop`\n Follow the instructions and start a key drop! \n\n More commands will be added soon...",
             "color": 2385569,
             "timestamp": "" + date,

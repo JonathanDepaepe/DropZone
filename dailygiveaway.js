@@ -131,14 +131,12 @@ function updateDaily(date, channel, keys, steamInfo, messageId) {
 }
 
 function getDailyReactionsUsers(msg, keys) {
-    msg.awaitReactions((reaction) => reaction.emoji.id === '723120954468990996', {time: 10000})
-        .then(collected => addUsersToDatabase(collected.toJSON(), keys))
-        .catch(console.error);
+    msg.reactions.cache.get('723120954468990996').users.fetch().then(userList => addUsersToDatabase(userList, keys))
+        .catch(err => console.error(err));
 }
 
 function addUsersToDatabase(messageData, keys) {
-    let databaseUsers = [];
-    let messageUsers = [];
+    let databaseUsers = [null];
     database.getDailyUsers(keys[0].id, (err, users) => {
         if (err) throw console.error(err);
 
@@ -147,14 +145,14 @@ function addUsersToDatabase(messageData, keys) {
                 databaseUsers.push(enteredUsers.userID)
             }
         }
-        if (!(messageData.length === 0))
-            messageUsers = messageData[0].users
-        for (let user of messageUsers) {
-            if (!databaseUsers.includes(user)) {
-                database.addUserDaily(user, keys[0].id);
-            }
 
-        }
+        messageData.forEach(user => {
+            if (user.id !== undefined && !databaseUsers.includes(user.id)) {
+                console.log(user)
+                console.log(user.id)
+                database.addUserDaily(user.id, keys[0].id);
+            }
+        })
     })
 }
 
@@ -187,7 +185,8 @@ function endGiveaway(messageId, keys, date, steamInfo, channel, rerolled) {
 
         channel.messages.fetch(messageId)
             .then(msg => {
-                msg.edit({ "content": null,
+                msg.edit({
+                    "content": null,
                     "embed": {
                         "title": "" + steamInfo.name,
                         "description": "React with <:DropZone:723120954468990996> to enter!\n ENDED",

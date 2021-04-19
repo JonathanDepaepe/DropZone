@@ -90,7 +90,7 @@ function addUserDaily(userId, dailyId) {
             let sql = "INSERT INTO `dailyuser`(userID, dailygamesID) VALUES(?, ?);";
             connection.query(sql, [userId, dailyId], (err, result) => {
                 if (err) console.log(err);
-                else console.log("Used with the id: " + userId + " has been added to: " + dailyId);
+                else console.log("User with the id: " + userId + " has been added to: " + dailyId);
             });
         }
     });

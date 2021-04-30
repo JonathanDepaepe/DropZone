@@ -65,7 +65,7 @@ function startDaily() {
             let steamAppId = keys[0].link.split("/")
             steam.getGameDetails(steamAppId[4]).then(result => {
                 const dailyChannel = client.channels.cache.find(channel => channel.id === config.dailyGiveawayChannel);
-                let date = new Date(Date.now() + 30000); //86.400.000ms --> 1D/24H
+                let date = new Date(Date.now() + 86400000); //86.400.000ms --> 1D/24H
                 dailyChannel.send({
                     "content": " :tada: **Daily Giveaway!** :tada:",
                     "embed": {
@@ -93,7 +93,7 @@ function startDaily() {
 
 
 function updateDaily(date, channel, keys, steamInfo, messageId) {
-
+    database.setDailyDate(date,messageId, keys[0].id);
     let x = setInterval(function () {
         let now = new Date().getTime();
         let t = date - now;
@@ -123,7 +123,7 @@ function updateDaily(date, channel, keys, steamInfo, messageId) {
             .then(msg => getDailyReactionsUsers(msg, keys))
         if (t < 0) {
             clearInterval(x);
-            endGiveaway(messageId, keys, date, steamInfo, channel, [])
+            endDailyGiveaway(messageId, keys, date, steamInfo, channel, [])
         }
 
     }, 10000);
@@ -148,8 +148,6 @@ function addUsersToDatabase(messageData, keys) {
 
         messageData.forEach(user => {
             if (user.id !== undefined && !databaseUsers.includes(user.id)) {
-                console.log(user)
-                console.log(user.id)
                 database.addUserDaily(user.id, keys[0].id);
             }
         })
@@ -157,7 +155,7 @@ function addUsersToDatabase(messageData, keys) {
 }
 
 
-function endGiveaway(messageId, keys, date, steamInfo, channel, rerolled) {
+function endDailyGiveaway(messageId, keys, date, steamInfo, channel, rerolled) {
     let databaseUsers = [];
     let winnerId, winnerTag;
 
@@ -176,7 +174,7 @@ function endGiveaway(messageId, keys, date, steamInfo, channel, rerolled) {
             let randomNumber = Math.floor(Math.random() * (databaseUsers.length - 2 + 1)) + 1;
             if (databaseUsers[randomNumber] !== "720631628501876799" && !rerolled.includes(databaseUsers[randomNumber])) {
                 winnerId = databaseUsers[randomNumber];
-                winnerTag = " <@" + databaseUsers[randomNumber] + ">,";
+                winnerTag = " <@" + databaseUsers[randomNumber] + ">";
             } else {
                 i--
             }
@@ -240,7 +238,7 @@ function getApprovalOfMod(channel, keys, winnerId, steamInfo, date, winnerTag, g
                         list.forEach(user => {
                             if (config.creators.includes(parseInt(user.id))) {
                                 rerolled.push(winnerId)
-                                endGiveaway(giveawayMSGID, keys, date, steamInfo, channel, rerolled);
+                                endDailyGiveaway(giveawayMSGID, keys, date, steamInfo, channel, rerolled);
                                 channel.send("Rerolled by <@" + user.id + ">, Winner was: " + winnerTag + ":confused:");
                                 clearInterval(x);
                                 msg.delete().catch(err => console.log(err));
@@ -288,8 +286,20 @@ function enableDailyCommand(message) {
 
 function stockDailyCommand(message) {
     database.getDailyGames((err, keys) => {
-        console.log(keys)
         message.channel.send("There is a total of " + keys.length + " in stock")
+    })
+}
+
+function checkRunningDaily() {
+    database.getStartedDailyGames((err, result) => {
+        if (result.length !== 0) {
+            let steamAppId = result[0].link.split("/");
+            steam.getGameDetails(steamAppId[4]).then(steam => {
+                const dailyChannel = client.channels.cache.find(channel => channel.id === config.dailyGiveawayChannel);
+                const date = new Date(result[0].date);
+                updateDaily(date, dailyChannel, result, steam, result[0].messageID)
+            })
+        }
     })
 }
 
@@ -298,6 +308,7 @@ module.exports = {
     startDailyCommand,
     disableDailyCommand,
     enableDailyCommand,
-    stockDailyCommand
+    stockDailyCommand,
+    checkRunningDaily
 }
 

@@ -4,9 +4,9 @@ const {token} = require("./auth.json");
 const {prefix} = require("./config.json")
 const config = require("./config.json")
 const authSolutions = require('./auth.js');
-const guildInvites = new Map();
 exports.client = client;
 const database = require("./database/MySqlConnection")
+const votingCommand = require("./votingCommand")
 const dailyGiveaway = require("./dailygiveaway")
 
 client.once("ready", () => {
@@ -14,12 +14,7 @@ client.once("ready", () => {
     client.user.setActivity('Drop Zone | &help', {type: 'WATCHING'})
         .then(presence => console.log(`Activity set to ${presence.activities[0].name}`))
         .catch(console.error);
-    client.guilds.cache.forEach(guild => {
-        guild.fetchInvites()
-            .then(invites => guildInvites.set(guild.id, invites))
-            .catch(err => console.log(err));
-    });
-
+    dailyGiveaway.checkRunningDaily();
 });
 
 client.once("reconnecting", () => {
@@ -55,6 +50,14 @@ client.on("message", async message => {
         adminHelpCommand(message);
     }
 
+    if (message.content.startsWith(`${prefix}monthly`)) {
+        getMonthlyCommand(message);
+    }
+
+    if (message.content.startsWith(`${prefix}resetMonthly`)) {
+        resetMonthlyCommand(message);
+    }
+
     if (message.content.startsWith(`${prefix}stockDaily`)) {
         dailyGiveaway.stockDailyCommand(message);
     }
@@ -82,7 +85,7 @@ function processCommand(receivedMessage) {
     if (primaryCommand == "help") {
         helpCommand(arguments, receivedMessage)
     } else if (primaryCommand == "voting") {
-        voting(receivedMessage, arguments[0])
+        votingCommand.voting(receivedMessage)
     } else if (primaryCommand == "giveaway") {
         giveAway(receivedMessage)
     } else if (primaryCommand == "keydrop") {
@@ -242,200 +245,6 @@ function sendToSteamGiftsChannel(message, gameName, steamGiftsURL, pictureURL) {
     })
 }
 
-function voting(message, messageID) {
-    let gameList = [];
-
-    const filterItemName = (response) => {
-        if (response.author.id === config.admin && response.content.length > 2) {
-            gameList.push(response.content);
-            return true;
-        }
-        return false;
-    };
-
-    message.channel.send("First game").then(() => {
-        message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
-            .then(collected => {
-                message.channel.send("URL:").then(() => {
-                    message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
-                        .then(collected => {
-                            message.channel.send("second game:").then(() => {
-                                message.channel.awaitMessages(filterItemName, {max: 1, time: 120000, errors: ['time']})
-                                    .then(collected => {
-                                        message.channel.send("URL:").then(() => {
-                                            message.channel.awaitMessages(filterItemName, {
-                                                max: 1,
-                                                time: 120000,
-                                                errors: ['time']
-                                            })
-                                                .then(collected => {
-                                                    message.channel.send("third game").then(() => {
-                                                        message.channel.awaitMessages(filterItemName, {
-                                                            max: 1,
-                                                            time: 120000,
-                                                            errors: ['time']
-                                                        })
-                                                            .then(collected => {
-                                                                message.channel.send("URL:").then(() => {
-                                                                    message.channel.awaitMessages(filterItemName, {
-                                                                        max: 1,
-                                                                        time: 120000,
-                                                                        errors: ['time']
-                                                                    })
-                                                                        .then(collected => {
-                                                                            message.channel.send("Last game:").then(() => {
-                                                                                message.channel.awaitMessages(filterItemName, {
-                                                                                    max: 1,
-                                                                                    time: 120000,
-                                                                                    errors: ['time']
-                                                                                })
-                                                                                    .then(collected => {
-                                                                                        message.channel.send("URL:").then(() => {
-                                                                                            message.channel.awaitMessages(filterItemName, {
-                                                                                                max: 1,
-                                                                                                time: 120000,
-                                                                                                errors: ['time']
-                                                                                            })
-                                                                                                .then(collected => {
-                                                                                                    message.channel.send("Alright all set!");
-                                                                                                    sendVoting(message, gameList, messageID);
-                                                                                                })
-                                                                                                .catch(collected => {
-                                                                                                    message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
-                                                                                                });
-                                                                                        });
-                                                                                    })
-                                                                                    .catch(collected => {
-                                                                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
-                                                                                    });
-                                                                            });
-                                                                        })
-                                                                        .catch(collected => {
-                                                                            message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
-                                                                        });
-                                                                });
-                                                            })
-                                                            .catch(collected => {
-                                                                message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
-                                                            });
-                                                    });
-                                                })
-                                                .catch(collected => {
-                                                    message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
-                                                });
-                                        });
-                                    })
-                                    .catch(collected => {
-                                        message.channel.send(":question: Uh! You took longer then 2 minutes to respond");
-                                    });
-                            });
-                        })
-                        .catch(collected => {
-                            message.channel.send("Uh! You took longer then 2 minutes to respond");
-                        });
-                });
-            })
-            .catch(collected => {
-                message.channel.send("Uh! You took longer then 2 minutes to respond");
-            });
-    });
-
-
-}
-
-
-function sendVoting(message, gameList, channelId) {
-
-    let date;
-    date = new Date(Date.now() + config.lengthOfDaysVoting * 24 * 3600 * 1000)
-
-
-    const giveawayChannel = message.guild.channels.cache.find(channel => channel.id === channelId);
-
-    giveawayChannel.send("@everyone\n", {
-        "embed": {
-            "title": "***Voting***",
-            "timestamp": "" + date,
-            "description": ":heart: [" + gameList[0] + "]" + "(" + gameList[1] + ")\n" +
-                ":orange_heart: [" + gameList[2] + "]" + "(" + gameList[3] + ")\n" +
-                ":green_heart: [" + gameList[4] + "]" + "(" + gameList[5] + ")\n" +
-                ":yellow_heart: [" + gameList[6] + "]" + "(" + gameList[7] + ")",
-            "color": 4385012,
-            "footer": {
-                "text": "voting ends"
-            }
-        }
-    }).then(sentEmbed => {
-        sentEmbed.react("❤️")
-        sentEmbed.react("🧡")
-        sentEmbed.react("💚")
-        sentEmbed.react("💛")
-        addVotingToDatabase(message, channelId, sentEmbed.id, gameList, date)
-
-    })
-
-}
-
-function addVotingToDatabase(message, channelId, message_id, gameList, endDate) {
-    database.addVoting(channelId, message_id, gameList[0], gameList[1], gameList[2], gameList[3], gameList[4], gameList[5], gameList[6], gameList[7], endDate).then(result => {
-        waitingEndVoting(message, channelId, message_id, gameList, endDate)
-    })
-}
-
-
-function getTheMessage(message, channelId, messageID, gameList, endDate) {
-    const channelMessage = message.guild.channels.cache.find(channel => channel.id === channelId)
-    channelMessage.messages.fetch(messageID).then(element => countVotes(channelMessage, messageID, gameList, endDate, element.reactions.cache.toJSON()))
-}
-
-function waitingEndVoting(message, channelId, messageID, gameList, endDate) {
-
-
-    let x = setInterval(function () {
-        let now = new Date().getTime();
-        let t = endDate - now;
-        if (t < 0) {
-            clearInterval(x);
-            getTheMessage(message, channelId, messageID, gameList, endDate)
-        }
-
-
-    }, 10000);
-}
-
-function countVotes(message, messageID, gameList, date, element) {
-    const hearts = [":heart:", ":orange_heart:", ":green_heart:", ":yellow_heart:"]
-    console.log(element)
-    let highest = [0, 0]
-    for (let i = 0; i < element.length; i++) {
-        if (element[i].count > highest[1]) {
-            highest[0] = i;
-            highest[1] = element[i].count
-        }
-
-    }
-
-    database.updateVotingByMessageID(messageID)
-
-    message.messages.fetch(messageID)
-        .then(msg => {
-            msg.edit({
-                "embed": {
-                    "title": "***Voting Ended***",
-                    "timestamp": "" + date,
-                    "description": ":heart: [" + gameList[0] + "]" + "(" + gameList[1] + ")\n" +
-                        ":orange_heart: [" + gameList[2] + "]" + "(" + gameList[3] + ")\n" +
-                        ":green_heart: [" + gameList[4] + "]" + "(" + gameList[5] + ")\n" +
-                        ":yellow_heart: [" + gameList[6] + "]" + "(" + gameList[7] + ")\n\n" +
-                        "Won: " + hearts[highest[0]] + " " + gameList[highest[0] * 2],
-                    "color": 4385012,
-                    "footer": {
-                        "text": "voting ends"
-                    }
-                }
-            });
-        });
-}
 
 function giveAway(message) {
     const giveawayUserIdRequester = message.author.id
@@ -703,21 +512,7 @@ function endGiveaway(message, giveawayChannel, message_id, name, totalWinners, g
 }
 
 function checkCommand(message) {
-    database.getVoting((err, result) => {
-        for (let voting of result) {
-            let gameList = [];
-            gameList.push(voting.gameName1)
-            gameList.push(voting.url1)
-            gameList.push(voting.gameName2)
-            gameList.push(voting.url2)
-            gameList.push(voting.gameName3)
-            gameList.push(voting.url3)
-            gameList.push(voting.gameName4)
-            gameList.push(voting.url4)
-            let date = new Date(voting.time)
-            waitingEndVoting(message, voting.channel_id, voting.message_id, gameList, date)
-        }
-    });
+    votingCommand.checkVoting(message);
 
     database.getLevelGiveaways((err, result) => {
         for (let giveaway of result) {
@@ -739,7 +534,7 @@ function levelMessage(message) {
     let user = [];
     let userExists = false;
     let content = message.content
-    if (!content.includes("&rank") && !content.includes("&claim")) {
+    if (!content.includes("&rank") && !content.includes("&claim") && !config.disabledXPChannels.includes(parseInt(message.channel.id))) {
         database.getLevels((err, result) => {
             for (let enteredUsers of result) {
                 if (message.author.id === enteredUsers.user_id) {
@@ -749,6 +544,7 @@ function levelMessage(message) {
                     user.push(enteredUsers.totalMessages)
                     user.push(enteredUsers.totalXp)
                     user.push(enteredUsers.lastMessage)
+                    user.push(enteredUsers.monthlyMessages)
                     addLevels(user, message)
 
                 }
@@ -763,6 +559,7 @@ function levelMessage(message) {
 
 function addLevels(user, message) {
     let lastMessage = new Date(user[4])
+    let monthlyMessages = (user[5] === null) ? 1 : parseInt(user[5]) + 1;
     let now = new Date().getTime();
     let t = lastMessage - now;
     let randomXP;
@@ -777,6 +574,7 @@ function addLevels(user, message) {
             randomXP = Math.floor(Math.random() * Math.floor(config.maxXP)) + 1;
         }
 
+
         newTotalXp = (parseInt(user[3]) + randomXP).toString()
         if (newTotalXp > calculatingLevel(parseInt(user[1]) + 1)) {
             level = (parseInt(level) + 1).toString()
@@ -787,7 +585,7 @@ function addLevels(user, message) {
         checkLevel(user[0], level, message)
         date = new Date()
     }
-    database.updateLevel(level, totalMessages, newTotalXp, date, user[0]);
+    database.updateLevel(level, totalMessages, newTotalXp, date, user[0], monthlyMessages);
 }
 
 function checkLevel(userId, level, message) {
@@ -842,7 +640,7 @@ function rankCommand(message) {
 
     let date = new Date();
     let userExists = false;
-    database.getLevels((err,result) => {
+    database.getLevels((err, result) => {
         for (let enteredUsers of result) {
             if (userId === enteredUsers.user_id) {
                 userExists = true;
@@ -870,6 +668,26 @@ function rankCommand(message) {
 
 }
 
+function getMonthlyCommand(message) {
+    let body = "";
+    database.getLevelsTopMonthly((err, result) => {
+        console.log(result)
+        result.forEach(user => {
+            body += "<@"+ user.user_id +"> Total messages this month: " + user.monthlyMessages + "\n"
+        })
+        message.channel.send("Here are the top 10 of this month: \n" + body);
+    })
+
+
+}
+
+
+function resetMonthlyCommand(message) {
+    if (config.creators.includes(parseInt(message.author.id))){
+        database.resetMonthlyMessages();
+        message.channel.send("Monthly messages has been cleared! :tada:")
+    }
+}
 
 function claimCommand(message) {
     let steamKey = ""
@@ -1257,7 +1075,7 @@ function endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinne
     let winnerNumbers = [];
 
     database.updateLevelGiveawayToEnded(message_id);
-    database.getLevelGiveawaysByID(giveaway_id, (err, result)=> {
+    database.getLevelGiveawaysByID(giveaway_id, (err, result) => {
 
         for (let enteredUsers of result) {
             if (!databaseUsers.includes(enteredUsers.userid)) {
@@ -1553,7 +1371,7 @@ function adminHelpCommand(message) {
     let date = new Date();
     message.channel.send({
         "embed": {
-            "description": "\n`&sendKey`\n Send a key to a user with the bot overlay, `&sendKey DiscordUserID SteamKey Steam name`\n\n`&addClaim`\n Add a claim key to the bots database `&addClaim SteamKey Steam Name`\n\n`&stockClaim`\n Check The stock of the claims\n\n`&addDaily`\n Add a daily key to the bots database by following the instructions\n\n`&stockDaily`\n Check The stock of the daily giveaways\n\n`&keyDrop`\n Follow the instructions and start a key drop! \n\n More commands will be added soon...",
+            "description": "\n`&sendKey`\n Send a key to a user with the bot overlay, `&sendKey DiscordUserID SteamKey Steam name`\n\n`&addClaim`\n Add a claim key to the bots database `&addClaim SteamKey Steam Name`\n\n`&stockClaim`\n Check The stock of the claims\n\n`&addDaily`\n Add a daily key to the bots database by following the instructions\n\n`&stockDaily`\n Check The stock of the daily giveaways\n\n`&keyDrop`\n Follow the instructions and start a key drop!\n\n`&monthly`\n Get the top 10 monthly users!\n\n`&resetMonthly`\n Reset the monthly messages count of all users! \n\n More commands will be added soon...",
             "color": 2385569,
             "timestamp": "" + date,
             "footer": {

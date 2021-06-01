@@ -8,6 +8,11 @@ exports.client = client;
 const database = require("./database/MySqlConnection")
 const votingCommand = require("./votingCommand")
 const dailyGiveaway = require("./dailygiveaway")
+const api = require("./api.js")
+const userCommand = require("./user.js")
+fs = require('fs');
+
+let UPTIME;
 
 client.once("ready", () => {
     console.log('Bot ready!');
@@ -15,6 +20,7 @@ client.once("ready", () => {
         .then(presence => console.log(`Activity set to ${presence.activities[0].name}`))
         .catch(console.error);
     dailyGiveaway.checkRunningDaily();
+    UPTIME = new Date();
 });
 
 client.once("reconnecting", () => {
@@ -23,6 +29,15 @@ client.once("reconnecting", () => {
 
 client.once("disconnect", () => {
     console.log("Disconnect!");
+});
+
+client.on("userUpdate", function (o, n){
+    if (o === undefined || n === undefined) return;
+
+    if (o.username !== n.username || o.avatar !== n.avatar){
+        userCommand.updateUser(n)
+    }
+
 });
 
 client.on("message", async message => {
@@ -73,6 +88,8 @@ client.on("message", async message => {
 });
 
 
+
+
 function processCommand(receivedMessage) {
     let fullCommand = receivedMessage.content.substr(1) // Remove the leading exclamation mark
     let splitCommand = fullCommand.split(" ") // Split the message up in to pieces for each space
@@ -112,6 +129,8 @@ function processCommand(receivedMessage) {
         dailyGiveaway.disableDailyCommand(receivedMessage)
     } else if (primaryCommand == "enableDaily") {
         dailyGiveaway.enableDailyCommand(receivedMessage)
+    } else if (primaryCommand == "uptime") {
+        uptimeCommand(receivedMessage)
     } else {
         receivedMessage.channel.send("I don't recognize the command. Try `&help` ")
     }
@@ -534,7 +553,7 @@ function levelMessage(message) {
     let user = [];
     let userExists = false;
     let content = message.content
-    if (!content.includes("&rank") && !content.includes("&claim") && !config.disabledXPChannels.includes(parseInt(message.channel.id))) {
+    if (!content.includes("&rank") || !content.includes("&claim") || !config.disabledXPChannels.includes(parseInt(message.channel.id))) {
         database.getLevels((err, result) => {
             for (let enteredUsers of result) {
                 if (message.author.id === enteredUsers.user_id) {
@@ -552,6 +571,7 @@ function levelMessage(message) {
             if (!userExists) {
                 let date = new Date()
                 database.addLevelUser(message.author.id, date);
+                userCommand.addUser(message);
             }
         })
     }
@@ -591,6 +611,7 @@ function addLevels(user, message) {
 function checkLevel(userId, level, message) {
     const bronze = message.guild.roles.cache.find(role => role.name === "Bronze")
     const silver = message.guild.roles.cache.find(role => role.name === "Silver")
+    const gold = message.guild.roles.cache.find(role => role.name === "Gold")
     if (level === "5" && !message.member.roles.cache.find(r => r.name === "Bronze")) {
         message.member.roles.add(bronze)
     } else if (level === "10" && !message.member.roles.cache.find(r => r.name === "Silver")) {
@@ -598,6 +619,11 @@ function checkLevel(userId, level, message) {
             message.member.roles.remove(bronze)
         }
         message.member.roles.add(silver)
+    } else if (level === "20" && !message.member.roles.cache.find(r => r.name === "Gold")) {
+        if (message.member.roles.cache.find(r => r.name === "Silver")) {
+            message.member.roles.remove(silver)
+        }
+        message.member.roles.add(gold)
     }
 
 }
@@ -670,20 +696,21 @@ function rankCommand(message) {
 
 function getMonthlyCommand(message) {
     let body = "";
-    database.getLevelsTopMonthly((err, result) => {
-        console.log(result)
-        result.forEach(user => {
-            body += "<@"+ user.user_id +"> Total messages this month: " + user.monthlyMessages + "\n"
-        })
-        message.channel.send("Here are the top 10 of this month: \n" + body);
+    database.getLevelsTopMonthly(10, (err, result) => {
+        if (result.length === 0) {
+            message.channel.send("There is no top 10 yet :slight_smile:");
+        } else {
+            result.forEach(user => {
+                body += "<@" + user.user_id + "> Total messages this month: " + user.monthlyMessages + "\n"
+            })
+            message.channel.send("Here are the top 10 of this month: \n" + body);
+        }
     })
-
-
 }
 
 
 function resetMonthlyCommand(message) {
-    if (config.creators.includes(parseInt(message.author.id))){
+    if (config.creators.includes(parseInt(message.author.id))) {
         database.resetMonthlyMessages();
         message.channel.send("Monthly messages has been cleared! :tada:")
     }
@@ -695,7 +722,7 @@ function claimCommand(message) {
     let date = new Date();
     let winnerNumbers = [];
     let winnerGames = []
-    let claimEnabled = false;
+    let claimEnabled = true;
 
     if (claimEnabled) {
 
@@ -1075,8 +1102,7 @@ function endLevelGiveaway(message, giveawayChannel, message_id, name, totalWinne
     let winnerNumbers = [];
 
     database.updateLevelGiveawayToEnded(message_id);
-    database.getLevelGiveawaysByID(giveaway_id, (err, result) => {
-
+    database.getLevelUserByID(giveaway_id, (err, result) => {
         for (let enteredUsers of result) {
             if (!databaseUsers.includes(enteredUsers.userid)) {
                 databaseUsers.push(enteredUsers.userid)
@@ -1389,6 +1415,20 @@ function adminHelpCommand(message) {
     })
 
 }
+
+function uptimeCommand(message){
+    console.log(UPTIME)
+    let date = new Date() - UPTIME
+
+
+    let days = Math.floor((date % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60* 24));
+    let hours = Math.floor((date % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    let minutes = Math.floor((date % (1000 * 60 * 60)) / (1000 * 60));
+    let seconds = Math.floor((date % (1000 * 60)) / 1000);
+    message.channel.send("The bot has been live for: " + days +" days "+ hours +" hours "+ minutes +" minutes "+ seconds +" seconds")
+}
+
+
 
 
 client.login(token);

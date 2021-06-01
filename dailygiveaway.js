@@ -72,7 +72,7 @@ function startDaily() {
                         "title": "" + result.name,
                         "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + 24 + " hours " + 0 + " minutes " + 0 + " seconds",
                         "url": "" + keys[0].link,
-                        "color": 10761782,
+                        "color": 4385012,
                         "timestamp": "" + date,
                         "footer": {
                             "text": "Created by " + keys[0].username
@@ -93,7 +93,7 @@ function startDaily() {
 
 
 function updateDaily(date, channel, keys, steamInfo, messageId) {
-    database.setDailyDate(date,messageId, keys[0].id);
+    database.setDailyDate(date, messageId, keys[0].id);
     let x = setInterval(function () {
         let now = new Date().getTime();
         let t = date - now;
@@ -108,7 +108,7 @@ function updateDaily(date, channel, keys, steamInfo, messageId) {
                         "title": "" + steamInfo.name,
                         "description": "React with <:DropZone:723120954468990996> to enter!\n Time remaining: " + hours + " hours " + minutes + " minutes " + seconds + " seconds",
                         "url": "" + keys[0].link,
-                        "color": 10761782,
+                        "color": 4385012,
                         "timestamp": "" + date,
                         "footer": {
                             "text": "Created by " + keys[0].username
@@ -200,8 +200,8 @@ function endDailyGiveaway(messageId, keys, date, steamInfo, channel, rerolled) {
                     }
                 })
             })
-
-        getApprovalOfMod(channel, keys, winnerId, steamInfo, date, winnerTag, messageId, rerolled)
+        database.setDailyWinner(keys[0].id, winnerId);
+        getApprovalOfMod(channel, keys, winnerId, steamInfo, date, winnerTag, messageId, rerolled);
 
 
     })
@@ -219,55 +219,77 @@ function getApprovalOfMod(channel, keys, winnerId, steamInfo, date, winnerTag, g
             messageID = msg.id
         })
         .then(msg => {
-            let x = setInterval(function () {
-                channel.messages.fetch(messageID).then(msg => {
-                    msg.reactions.cache.get('✅').users.fetch().then(list => {
-                        list.forEach(user => {
-                            if (config.creators.includes(parseInt(user.id))) {
-                                sendKeyToWinner(keys, winnerId, steamInfo, date);
-                                channel.send("Congrats" + winnerTag + " You won : " + steamInfo.name + "!! :tada::tada:");
-                                msg.delete().catch(err => console.log(err));
-                                if (dailyGiveaway) {
-                                    startDaily();
-                                }
-                                clearInterval(x);
-                            }
-                        })
-                    });
-                    msg.reactions.cache.get('❌').users.fetch().then(list => {
-                        list.forEach(user => {
-                            if (config.creators.includes(parseInt(user.id))) {
-                                rerolled.push(winnerId)
-                                endDailyGiveaway(giveawayMSGID, keys, date, steamInfo, channel, rerolled);
-                                channel.send("Rerolled by <@" + user.id + ">, Winner was: " + winnerTag + ":confused:");
-                                clearInterval(x);
-                                msg.delete().catch(err => console.log(err));
-                            }
-                        })
-                    })
-
-                });
-            }, 10000)
+            checkMessage(channel, messageID, keys, winnerId, steamInfo, date, winnerTag, rerolled, giveawayMSGID)
+            database.setDailyApprovalMessage(keys[0].id, messageID)
         })
+}
+
+function checkMessage(channel, messageID, keys, winnerId, steamInfo, date, winnerTag, rerolled, giveawayMSGID) {
+    let x = setInterval(function () {
+        channel.messages.fetch(messageID).then(msg => {
+            msg.reactions.cache.get('✅').users.fetch()
+                .then(list => {
+                    list.forEach(user => {
+                        if (config.creators.includes(parseInt(user.id))) {
+                            sendKeyToWinner(keys, winnerId, steamInfo, date);
+                            database.setDailyApprovalUsed(keys[0].id);
+                            channel.send("Congrats" + winnerTag + " You won : " + steamInfo.name + "!! :tada::tada: Accepted by: <@" + user.id + "> :heart:");
+                            msg.delete().catch(err => console.log(err));
+                            if (dailyGiveaway) {
+                                startDaily();
+                            }
+                            clearInterval(x);
+                        }
+                    })
+                })
+
+            msg.reactions.cache.get('❌').users.fetch().then(list => {
+                list.forEach(user => {
+                    if (config.creators.includes(parseInt(user.id))) {
+                        rerolled.push(winnerId)
+                        endDailyGiveaway(giveawayMSGID, keys, date, steamInfo, channel, rerolled);
+                        channel.send("Rerolled by <@" + user.id + ">, Winner was: " + winnerTag + ":confused:");
+                        clearInterval(x);
+                        msg.delete().catch(err => console.log(err));
+                    }
+                })
+            })
+
+        });
+    }, 10000)
+
 }
 
 function sendKeyToWinner(keys, winnerId, steamInfo, date) {
     const userPrivateChat = client.users.cache.find(userChat => userChat.id === winnerId);
-    userPrivateChat.send({
-        "embed": {
-            "title": "GiveAway",
-            "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your key:** ```" + keys[0].key + " | " + steamInfo.name + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
-            "color": 254714,
-            "timestamp": "" + date,
-            "footer": {
-                "icon_url": "https://i.imgur.com/A4OSs19.jpg",
-                "text": "SilentZ420"
-            },
-            "thumbnail": {
-                "url": "https://i.imgur.com/TIDrbVI.png"
+    setTimeout(function () {
+        userPrivateChat.send({
+            "embed": {
+                "title": "GiveAway",
+                "description": "Feedback is always welcome in  [#feedback](https://discord.gg/WFSV7e5) in Drop Zone. \n **Your key:** ```" + keys[0].key + " | " + steamInfo.name + "```\n Visit us too on [KeyLegends.com](https://www.keylegends.com/)",
+                "color": 4385012,
+                "timestamp": "" + date,
+                "footer": {
+                    "icon_url": "https://i.imgur.com/A4OSs19.jpg",
+                    "text": "SilentZ420"
+                },
+                "thumbnail": {
+                    "url": "https://i.imgur.com/TIDrbVI.png"
+                }
             }
-        }
-    })
+        }).catch((err) => {
+            const discordErr = client.channels.cache.find(channel => channel.id === config.botErrorChannel);
+            discordErr.send({
+                "embed": {
+                    "title": "Daily Failed to Send",
+                    "description": "Failed to send the key to " + userPrivateChat.username,
+                    "color": 10761782,
+                    "timestamp": "" + date
+                }
+            })
+        })
+    }, 1000)
+
 }
 
 function disableDailyCommand(message) {
@@ -301,6 +323,17 @@ function checkRunningDaily() {
             })
         }
     })
+    database.getNotApprovedDaily((err, result) => {
+        if (result.length !== 0) {
+            let steamAppId = result[0].link.split("/");
+            steam.getGameDetails(steamAppId[4]).then(steam => {
+                const dailyChannel = client.channels.cache.find(channel => channel.id === config.dailyGiveawayChannel);
+                const date = new Date(result[0].date);
+                checkMessage(dailyChannel, result[0].approvalID, result, result[0].winnerID, steam, date, " <@" + result[0].winnerID + ">", [], result[0].messageID);
+            })
+        }
+    })
+
 }
 
 module.exports = {
